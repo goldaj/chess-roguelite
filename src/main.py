@@ -63,8 +63,8 @@ class App:
         self.assets.load(self.tile)
         self.meta = load_meta()
         self.buttons=[]
-        self.btns_play=[]
         self.state="menu"
+        self.phase="menu"
         self.message=""
         self.stage_index=0
         self.animations=[]
@@ -72,9 +72,22 @@ class App:
         self.reset_run()
         self.build_menu_buttons()
     
+    def recompute_tile(self):
+        # Ensure board fits screen; keep pieces crisp
+        W, H = self.screen.get_size()
+        side_panel = max(360, W//4)
+        max_tile_w = max(40, int((W - side_panel - 40) / max(1, self.board_w)))
+        max_tile_h = max(40, int((H - 60) / max(1, self.board_h)))
+        new_tile = max(56, min(128, min(max_tile_w, max_tile_h)))
+        if new_tile != self.tile:
+            self.tile = new_tile
+            self.assets.load(self.tile)
+
     def reset_run(self):
+        self.phase = "manche"
         self.btns_play = []
         self.stage_index=0
+        self.manches_won = 0
         self.gold=0
         self.double_start=False
         self.double_start_always=False
@@ -100,59 +113,36 @@ class App:
         self.build_ingame_buttons()
     
     
+    
     def place_armies_initial_layout(self):
-        # Tall orientation (width x height), start with 3x8 then widen to 8x8.
-        # We center 3 pawns on the front row and (R,K,N) on the back row with the King in the middle column.
+        # Player pieces always at bottom; enemy at top. Colors preserved.
         self.board = Board(self.board_w, self.board_h)
+
         def center_cols(count, width):
-            if count >= width:
-                return list(range(width))
+            if count >= width: return list(range(width))
             mid = width // 2
-            cols = []
-            # take mid, then expand left/right
-            cols.append(mid)
-            left = mid - 1
-            right = mid + 1
-            while len(cols) < count and (left >= 0 or right < width):
-                if left >= 0:
-                    cols.append(left)
-                    if len(cols) >= count: break
-                    left -= 1
-                if right < width:
-                    cols.append(right)
-                    right += 1
-            cols.sort()
-            return cols[:count]
-        def place_side(color):
-            if color == 'w':
-                pawn_row = self.board_h - 2
-                back_row = self.board_h - 1
-            else:
-                pawn_row = 1
-                back_row = 0
-            # choose 3 center columns (or fewer if width < 3)
+            cols=[mid]; L=mid-1; R=mid+1
+            while len(cols)<count and (L>=0 or R<width):
+                if L>=0: cols.append(L); L-=1
+                if len(cols)>=count: break
+                if R<width: cols.append(R); R+=1
+            cols.sort(); return cols[:count]
+
+        def place_bottom(army, color):
+            pawn_row = self.board_h - 2
+            back_row = self.board_h - 1
             cols3 = center_cols(3, self.board_w)
-            # place pawns (up to available)
-            army = self.player_army if color == self.player_color else self.enemy_army
-            p_count = min(army.get('P', 0), len(cols3))
+            p_count = min(army.get('P',0), len(cols3))
             for i in range(p_count):
                 self.board.set(cols3[i], pawn_row, Piece('P', color))
-            # place back pieces R K N on same 3 columns, K in the middle (closest to center)
-            back_kinds = ['R', 'K', 'N']
-            # Map K to center index among cols3
-            if len(cols3) >= 3:
-                ordered_cols = [cols3[0], cols3[1], cols3[2]]
-            else:
-                ordered_cols = cols3
-                back_kinds = back_kinds[:len(cols3)]
-            # ensure we only place if owned
-            owns = {k: army.get(k, 0) for k in ('R','K','N','B','Q','A')}
-            for kind, fx in zip(back_kinds, ordered_cols):
-                if owns.get(kind,0) > 0:
+            back_kinds = ['R','K','N'][:len(cols3)]
+            for kind, fx in zip(back_kinds, cols3):
+                if army.get(kind,0)>0:
                     self.board.set(fx, back_row, Piece(kind, color))
-            # place any extra owned pieces (B,Q,A or extra R/N) into remaining back/pawn rows
-            for kind in ('B','Q','A','R','N'):
-                extra = max(0, army.get(kind,0) - (1 if kind in ('R','K','N') else 0))
+            for kind in ('B','Q','A','R','N','P'):
+                base_count = 1 if kind in ('R','K','N') else 0
+                base_p = 1 if (kind=='P' and p_count>0) else 0
+                extra = max(0, army.get(kind,0) - base_count - base_p)
                 for _ in range(extra):
                     placed=False
                     for y in [back_row, pawn_row]:
@@ -160,11 +150,37 @@ class App:
                             if self.board.get(x,y) is None:
                                 self.board.set(x,y, Piece(kind, color)); placed=True; break
                         if placed: break
+
+        def place_top(army, color):
+            pawn_row = 1
+            back_row = 0
+            cols3 = center_cols(3, self.board_w)
+            p_count = min(army.get('P',0), len(cols3))
+            for i in range(p_count):
+                self.board.set(cols3[i], pawn_row, Piece('P', color))
+            back_kinds = ['R','K','N'][:len(cols3)]
+            for kind, fx in zip(back_kinds, cols3):
+                if army.get(kind,0)>0:
+                    self.board.set(fx, back_row, Piece(kind, color))
+            for kind in ('B','Q','A','R','N','P'):
+                base_count = 1 if kind in ('R','K','N') else 0
+                base_p = 1 if (kind=='P' and p_count>0) else 0
+                extra = max(0, army.get(kind,0) - base_count - base_p)
+                for _ in range(extra):
+                    placed=False
+                    for y in [back_row, pawn_row]:
+                        for x in range(self.board_w):
+                            if self.board.get(x,y) is None:
+                                self.board.set(x,y, Piece(kind, color)); placed=True; break
+                        if placed: break
+
         if self.player_color == 'w':
-            place_side('w'); place_side('b')
+            place_bottom(self.player_army, 'w')
+            place_top(self.enemy_army, 'b')
         else:
-            place_side('b'); place_side('w')
-    
+            place_bottom(self.player_army, 'b')
+            place_top(self.enemy_army, 'w')
+
     def build_menu_buttons(self):
         self.buttons = []
         sw, sh = self.screen.get_size()
@@ -175,7 +191,6 @@ class App:
         add(int(sh*0.55)+70, "OPTIONS", self.open_options)
         add(int(sh*0.55)+140, "QUITTER", self.quit_game)
 
-        self.btns_play=[]
         sw,sh=self.screen.get_size()
         side_panel = max(360, sw//4)
         x = sw - side_panel + 20
@@ -211,6 +226,8 @@ class App:
 
 
     def build_shop_buttons(self):
+        if self.phase != "inter":
+            return  # guard: only between manches
         # build 3 random offers + 'Continuer' button
         self.shop_offers = random.sample(CONTENT["shop_pool"], 3)
         self.shop_btns=[]
@@ -233,6 +250,7 @@ class App:
         self.start_stage()
     
     def open_options(self):
+        self._state_before_options = self.state
         self.state="options"
         self.build_options_buttons()
     
@@ -263,8 +281,7 @@ class App:
             self.build_shop_buttons()
     
     def back_to_prev_from_options(self):
-        # return to previous logical state (menu or play)
-        self.state = "menu" if self.board is None or self.stage_index==0 else "play"
+        self.state = getattr(self, "_state_before_options", "menu")
     
     def back_to_menu(self):
         self.meta["starting_deck"]=self.player_army
@@ -277,6 +294,7 @@ class App:
         self.message="Cliquez une pièce ennemie à geler (1 tour)."
     
     def start_stage(self):
+        self.recompute_tile()
         if self.double_start or self.double_start_always:
             self.pre_moves_left=2
         else:
@@ -290,6 +308,7 @@ class App:
         if win:
             self.gold += bonus + 5
         if win:
+            self.manches_won += 1
             self.stage_index += 1
             if self.stage_index >= len(CONTENT["stages"]):
                 # unlock amazon
@@ -301,17 +320,20 @@ class App:
                 self.state="meta"
             else:
                 sd = CONTENT["stages"][self.stage_index]
-                self.board_w,self.board_h = sd["board"]
+                self.board_w, self.board_h = sd["board"]
                 boost=sd.get("enemy_boost",0)
                 for _ in range(boost):
                     kind = random.choice(['P','N','B','R'])
                     self.enemy_army[kind]=self.enemy_army.get(kind,0)+1
-                self.player_ticks += CONTENT["tick_bonus_per_stage"]
-                self.enemy_ticks += CONTENT["tick_bonus_per_stage"]
-                # reposition with current armies (lost pieces persist lost)
+                # ticks fixed by stage
+                self.player_ticks = sd.get("player_ticks", self.player_ticks)
+                self.enemy_ticks = sd.get("enemy_ticks", self.enemy_ticks)
+                # carry surviving pieces to next manche
+                self.player_army = self.count_army(self.player_color)
+                self.enemy_army = self.count_army(self.enemy_color)
                 self.place_armies_initial_layout()
                 self.selection=None; self.legal_moves=[]
-                self.state="shop"
+                self.phase = "inter"; self.state="shop"
                 self.build_shop_buttons()
         else:
             self.meta["stats"]["runs"]+=1
@@ -330,13 +352,21 @@ class App:
     
     # Helpers
     def cost_for_piece(self, kind):
-        base=TICK_COSTS.get(kind,100)
-        if random.random() < self.zero_cost_probs.get(kind,0.0):
-            return 0
-        return base
+        prob = self.zero_cost_probs.get(kind, 0.0)
+        return 0 if random.random() < prob else 1
     def piece_value(self, kind):
         return PIECE_VALUES.get(kind,0)
     
+    def count_army(self, color):
+        counts = {}
+        for x in range(self.board_w):
+            for y in range(self.board_h):
+                p = self.board.get(x,y)
+                if p and p.color==color:
+                    counts[p.kind] = counts.get(p.kind,0)+1
+        return counts
+
+
     def world_layout(self):
         W,H=self.screen.get_size()
         side_panel=max(360, W//4)
@@ -381,7 +411,8 @@ class App:
         if self.player_ticks <= 0:
             self.message="Vous manquez de temps !"; self.end_stage(False); return
         ek=self.board.locate_king(self.enemy_color)
-        if ek is None:
+        no_enemy = all((self.board.get(x,y) is None or self.board.get(x,y).color!=self.enemy_color) for x in range(self.board_w) for y in range(self.board_h))
+        if ek is None or no_enemy:
             self.message="Roi ennemi capturé !"; self.end_stage(True); return
         if self.pre_moves_left>0:
             self.pre_moves_left-=1
@@ -392,7 +423,8 @@ class App:
     def do_enemy_turn(self):
         move=choose_move(self.board, self.enemy_color)
         if move is None:
-            self.message="L'ennemi est bloqué !"; self.end_stage(True); return
+            # No legal move (pat) -> skip enemy turn (no end-of-manche)
+            self.turn=self.player_color; return
         (x1,y1),(x2,y2)=move
         if (x1,y1) in self.frozen_coords:
             self.frozen_coords.discard((x1,y1))
@@ -401,12 +433,13 @@ class App:
         # animate enemy
         self.animate_move(x1,y1,x2,y2)
         self.board.move_and_promote(x1,y1,x2,y2)
-        cost=TICK_COSTS.get(p.kind,100)*self.enemy_tick_factor
+        cost=1 * self.enemy_tick_factor
         self.enemy_ticks -= cost
         if self.enemy_ticks <= 0:
             self.message="L'ennemi manque de temps !"; self.end_stage(True); return
         pk=self.board.locate_king(self.player_color)
-        if pk is None:
+        no_player = all((self.board.get(x,y) is None or self.board.get(x,y).color!=self.player_color) for x in range(self.board_w) for y in range(self.board_h))
+        if pk is None or no_player:
             self.message="Votre roi est capturé..."; self.end_stage(False); return
         self.turn=self.player_color
     
@@ -443,7 +476,8 @@ class App:
         self.message=f"Achat : {item['name']}"
     
     def shop_continue_next(self):
-        # proceed to next stage
+        # proceed to next manche
+        self.phase = "manche"
         self.start_stage()
         self.state="play"
     
@@ -475,6 +509,32 @@ class App:
         self.message=f"Acheté {kind}."
     
     # Drawing
+    
+    def open_meta(self):
+        self.state = "meta_menu"
+        self.build_meta_buttons()
+
+    def build_meta_buttons(self):
+        self.meta_menu_btns = []
+        sw, sh = self.screen.get_size()
+        self.meta_menu_btns.append(Button(pygame.Rect(sw//2-180, int(sh*0.80), 360, 52), "Retour", self.back_to_menu))
+
+    def draw_meta_menu(self):
+        self.screen.fill((20,22,28))
+        draw_text(self.screen, "Méta — Déblocages & deck de départ", (self.screen.get_width()//2, 70), 28, center=True)
+        y = 120
+        draw_text(self.screen, f"Amazon débloquée : {'Oui' if self.meta.get('amazon_unlocked') else 'Non'}", (60, y), 22); y += 30
+        # permanent bonuses
+        perm = self.meta.get('permanent', {})
+        draw_text(self.screen, f"Biais Blanc: {int(perm.get('bias_white',0)*100)}%  |  Biais Noir: {int(perm.get('bias_black',0)*100)}%", (60, y), 20); y += 26
+        zcp = perm.get('zero_cost_probs', {})
+        draw_text(self.screen, f"Chances de coup gratuit (par pièce): {zcp}", (60, y), 18); y += 26
+        # starting deck
+        sd = self.meta.get('starting_deck', {})
+        deck_str = ", ".join([f"{k}x{sd[k]}" for k in sorted(sd.keys())]) if sd else "(défaut)"
+        draw_text(self.screen, f"Deck de départ: {deck_str}", (60, y), 22); y += 30
+        for b in self.meta_menu_btns: b.draw(self.screen)
+
     def draw_menu(self):
         self.screen.fill((24,26,32))
         if self.assets.logo:
@@ -611,7 +671,7 @@ class App:
             for ev in pygame.event.get():
                 if ev.type==QUIT: running=False
                 elif ev.type==VIDEORESIZE:
-                    self.assets.load(self.tile)
+                    self.recompute_tile()
                     if self.state=="menu": self.build_menu_buttons()
                     if self.state=="play": self.build_ingame_buttons()
                     if self.state=="shop": self.build_shop_buttons()
@@ -642,6 +702,8 @@ class App:
                     elif self.state=="meta":
                         if hasattr(self, 'meta_btn'):
                             self.meta_btn.handle_event(ev)
+                    elif self.state=="meta_menu":
+                        for b in getattr(self, 'meta_menu_btns', []): b.handle_event(ev)
                 # no keyboard shortcuts; buttons only
             
             # game tick
@@ -655,6 +717,7 @@ class App:
             elif self.state in ("play","freeze_target"): self.draw_play()
             elif self.state=="shop": self.draw_shop()
             elif self.state=="meta": self.draw_meta()
+            elif self.state=="meta_menu": self.draw_meta_menu()
             
             pygame.display.flip()
         # on quit

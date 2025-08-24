@@ -16,11 +16,13 @@ DIRS = {
 class Piece:
     kind: str
     color: str
+    moved: bool = False
 
 class Board:
     def __init__(self, w:int, h:int):
         self.w=w; self.h=h
         self.grid=[[None for _ in range(h)] for __ in range(w)]
+        self.en_passant=None
     def in_bounds(self,x:int,y:int)->bool:
         return 0<=x<self.w and 0<=y<self.h
     def get(self,x:int,y:int):
@@ -39,7 +41,8 @@ class Board:
         for x in range(self.w):
             for y in range(self.h):
                 p=self.grid[x][y]
-                if p: b.grid[x][y]=Piece(p.kind,p.color)
+                if p: b.grid[x][y]=Piece(p.kind,p.color,p.moved)
+        b.en_passant = self.en_passant
         return b
     def is_attacked(self,x:int,y:int, by_color:str)->bool:
         # Knights + Amazon knight
@@ -120,12 +123,20 @@ class Board:
             fx,fy=x,y+diry
             if self.in_bounds(fx,fy) and not self.get(fx,fy):
                 moves.append((fx,fy))
+                fy2 = y + 2*diry
+                if not p.moved and self.in_bounds(fx,fy2) and not self.get(fx,fy2):
+                    moves.append((fx,fy2))
             for dx in (-1,1):
                 cx,cy=x+dx,y+diry
                 if self.in_bounds(cx,cy):
                     t=self.get(cx,cy)
-                    if t and t.color!=p.color: moves.append((cx,cy))
+                    if t and t.color!=p.color:
+                        moves.append((cx,cy))
+                    # en passant capture onto empty square equals en_passant
+                    elif self.en_passant == (cx,cy):
+                        moves.append((cx,cy))
         # filter self-check
+
         km=self.locate_king(p.color)
         legal=[]
         for (xx,yy) in moves:
@@ -138,6 +149,8 @@ class Board:
     def move_and_promote(self,x1,y1,x2,y2):
         p=self.get(x1,y1)
         self.set(x1,y1,None)
+        if p:
+            p.moved = True
         if p and p.kind=='P':
             if (p.color=='w' and y2==0) or (p.color=='b' and y2==self.h-1):
                 p=Piece('Q',p.color)

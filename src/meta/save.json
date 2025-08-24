@@ -1,8 +1,8 @@
 {
-  "amazon_unlocked": true,
+  "amazon_unlocked": false,
   "starting_deck": {
     "K": 1,
-    "R": 2,
+    "R": 1,
     "N": 1,
     "P": 3
   },
@@ -20,7 +20,7 @@
     }
   },
   "stats": {
-    "runs": 7,
-    "wins": 6
+    "runs": 0,
+    "wins": 0
   }
 }
