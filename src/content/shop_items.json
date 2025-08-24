@@ -194,58 +194,53 @@
   "stages": [
     {
       "board": [
-        3,
+        8,
         8
       ],
-      "player_ticks": 24,
-      "enemy_ticks": 24,
-      "player_start": {
-        "K": 1,
-        "R": 1,
-        "N": 1,
-        "P": 3
-      },
+      "player_ticks": 12,
+      "enemy_ticks": 12,
       "enemy_start": {
         "K": 1,
-        "R": 1,
-        "N": 1,
         "P": 3
       }
     },
     {
       "board": [
-        4,
+        8,
         8
       ],
-      "player_ticks": 26,
-      "enemy_ticks": 26,
+      "player_ticks": 14,
+      "enemy_ticks": 14,
+      "enemy_start": {
+        "K": 1,
+        "P": 3
+      },
       "enemy_boost": 1
     },
     {
       "board": [
-        5,
+        8,
         8
       ],
-      "player_ticks": 28,
-      "enemy_ticks": 28,
+      "player_ticks": 16,
+      "enemy_ticks": 16,
+      "enemy_start": {
+        "K": 1,
+        "P": 3
+      },
       "enemy_boost": 1
     },
     {
       "board": [
-        6,
+        8,
         8
       ],
-      "player_ticks": 30,
-      "enemy_ticks": 30,
-      "enemy_boost": 2
-    },
-    {
-      "board": [
-        7,
-        8
-      ],
-      "player_ticks": 32,
-      "enemy_ticks": 32,
+      "player_ticks": 18,
+      "enemy_ticks": 18,
+      "enemy_start": {
+        "K": 1,
+        "P": 3
+      },
       "enemy_boost": 2
     },
     {
@@ -253,8 +248,25 @@
         8,
         8
       ],
-      "player_ticks": 34,
-      "enemy_ticks": 34,
+      "player_ticks": 20,
+      "enemy_ticks": 20,
+      "enemy_start": {
+        "K": 1,
+        "P": 3
+      },
+      "enemy_boost": 2
+    },
+    {
+      "board": [
+        8,
+        8
+      ],
+      "player_ticks": 22,
+      "enemy_ticks": 22,
+      "enemy_start": {
+        "K": 1,
+        "P": 3
+      },
       "enemy_boost": 3
     }
   ]

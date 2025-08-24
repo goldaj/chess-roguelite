@@ -84,6 +84,9 @@ class App:
             self.assets.load(self.tile)
 
     def reset_run(self):
+        # Enforce new starting deck per spec
+        self.meta['starting_deck'] = {'K':1,'R':1,'B':1,'P':3}
+        save_meta(self.meta)
         self.phase = "manche"
         self.btns_play = []
         self.stage_index=0
@@ -117,6 +120,7 @@ class App:
     def place_armies_initial_layout(self):
         # Player pieces always at bottom; enemy at top. Colors preserved.
         self.board = Board(self.board_w, self.board_h)
+        self.board.bottom_color = self.player_color
 
         def center_cols(count, width):
             if count >= width: return list(range(width))
@@ -141,7 +145,7 @@ class App:
                     self.board.set(fx, back_row, Piece(kind, color))
             for kind in ('B','Q','A','R','N','P'):
                 base_count = 1 if kind in ('R','K','N') else 0
-                base_p = 1 if (kind=='P' and p_count>0) else 0
+                base_p = p_count if kind=='P' else 0
                 extra = max(0, army.get(kind,0) - base_count - base_p)
                 for _ in range(extra):
                     placed=False
@@ -164,7 +168,7 @@ class App:
                     self.board.set(fx, back_row, Piece(kind, color))
             for kind in ('B','Q','A','R','N','P'):
                 base_count = 1 if kind in ('R','K','N') else 0
-                base_p = 1 if (kind=='P' and p_count>0) else 0
+                base_p = p_count if kind=='P' else 0
                 extra = max(0, army.get(kind,0) - base_count - base_p)
                 for _ in range(extra):
                     placed=False
@@ -311,29 +315,34 @@ class App:
             self.manches_won += 1
             self.stage_index += 1
             if self.stage_index >= len(CONTENT["stages"]):
-                # unlock amazon
                 if not self.meta["amazon_unlocked"]:
-                    self.meta["amazon_unlocked"]=True
-                self.meta["stats"]["runs"]+=1
-                self.meta["stats"]["wins"]+=1
+                    self.meta["amazon_unlocked"] = True
+                self.meta["stats"]["runs"] += 1
+                self.meta["stats"]["wins"] += 1
                 save_meta(self.meta)
-                self.state="meta"
+                self.state = "meta"
             else:
+                # Prepare next manche
                 sd = CONTENT["stages"][self.stage_index]
                 self.board_w, self.board_h = sd["board"]
-                boost=sd.get("enemy_boost",0)
+                self.recompute_tile()
+                # Player carries over surviving pieces
+                self.player_army = self.count_army(self.player_color)
+                # Enemy refreshes from base + boosts
+                base_enemy = sd.get("enemy_start", {"K":1, "P":3})
+                self.enemy_army = dict(base_enemy)
+                boost = sd.get("enemy_boost", 0)
                 for _ in range(boost):
                     kind = random.choice(['P','N','B','R'])
-                    self.enemy_army[kind]=self.enemy_army.get(kind,0)+1
-                # ticks fixed by stage
-                self.player_ticks = sd.get("player_ticks", self.player_ticks)
-                self.enemy_ticks = sd.get("enemy_ticks", self.enemy_ticks)
-                # carry surviving pieces to next manche
-                self.player_army = self.count_army(self.player_color)
-                self.enemy_army = self.count_army(self.enemy_color)
+                    self.enemy_army[kind] = self.enemy_army.get(kind,0) + 1
+                # Reset ticks to stage-defined values
+                self.player_ticks = sd.get("player_ticks", 12)
+                self.enemy_ticks = sd.get("enemy_ticks", 12)
+                # Re-place armies for new board
                 self.place_armies_initial_layout()
                 self.selection=None; self.legal_moves=[]
-                self.phase = "inter"; self.state="shop"
+                self.phase = "inter"
+                self.state = "shop"
                 self.build_shop_buttons()
         else:
             self.meta["stats"]["runs"]+=1

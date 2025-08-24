@@ -23,6 +23,7 @@ class Board:
         self.w=w; self.h=h
         self.grid=[[None for _ in range(h)] for __ in range(w)]
         self.en_passant=None
+        self.bottom_color='w'  # orientation: pawns of this color move upward (-1)
     def in_bounds(self,x:int,y:int)->bool:
         return 0<=x<self.w and 0<=y<self.h
     def get(self,x:int,y:int):
@@ -43,6 +44,7 @@ class Board:
                 p=self.grid[x][y]
                 if p: b.grid[x][y]=Piece(p.kind,p.color,p.moved)
         b.en_passant = self.en_passant
+        b.bottom_color = self.bottom_color
         return b
     def is_attacked(self,x:int,y:int, by_color:str)->bool:
         # Knights + Amazon knight
@@ -67,14 +69,13 @@ class Board:
         if ray(DIRS['B'],('B','Q','A')): return True
         if ray(DIRS['R'],('R','Q','A')): return True
         # Pawns
-        if by_color=='w':
-            for dx in (-1,1):
-                p=self.get(x+dx,y-1)
-                if p and p.color=='w' and p.kind=='P': return True
-        else:
-            for dx in (-1,1):
-                p=self.get(x+dx,y+1)
-                if p and p.color=='b' and p.kind=='P': return True
+        # Determine attack direction based on orientation:
+        # pawns of bottom_color attack upward (-1), the other side downward (+1)
+        diry = -1 if by_color==self.bottom_color else 1
+        for dx in (-1,1):
+            p=self.get(x+dx, y - diry)
+            if p and p.color==by_color and p.kind=='P':
+                return True
         return False
     def legal_moves_for(self,x:int,y:int):
         p=self.get(x,y)
@@ -119,7 +120,7 @@ class Board:
                 t=self.get(xx,yy)
                 if not t or t.color!=p.color: moves.append((xx,yy))
         elif p.kind=='P':
-            diry = -1 if p.color=='w' else 1
+            diry = -1 if p.color==self.bottom_color else 1
             fx,fy=x,y+diry
             if self.in_bounds(fx,fy) and not self.get(fx,fy):
                 moves.append((fx,fy))
