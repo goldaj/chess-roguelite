@@ -1,0 +1,200 @@
+{
+  "piece_values": {
+    "P": 1,
+    "N": 3,
+    "B": 3,
+    "R": 5,
+    "Q": 9,
+    "A": 12,
+    "K": 0
+  },
+  "tick_costs": {
+    "P": 80,
+    "N": 100,
+    "B": 100,
+    "R": 100,
+    "Q": 120,
+    "A": 160,
+    "K": 100
+  },
+  "tick_bonus_per_stage": 20,
+  "tick_reward_factor": 0.05,
+  "buy_costs": {
+    "P": 3,
+    "N": 8,
+    "B": 8,
+    "R": 12,
+    "Q": 20,
+    "A": 36
+  },
+  "convert_costs": {
+    "N->B": 4,
+    "B->N": 4,
+    "P->N": 6,
+    "P->B": 6,
+    "P->R": 9,
+    "P->Q": 15,
+    "B->R": 7,
+    "N->R": 7,
+    "R->Q": 12
+  },
+  "shop_pool": [
+    {
+      "id": "ticks_plus",
+      "name": "+10 ticks joueur",
+      "type": "tick",
+      "amount": 10,
+      "cost": 6
+    },
+    {
+      "id": "ticks_enemy_minus",
+      "name": "-10% ticks ennemi",
+      "type": "tick_enemy",
+      "amount": -0.1,
+      "cost": 8
+    },
+    {
+      "id": "double_gold",
+      "name": "Doubler l'or actuel",
+      "type": "economy",
+      "effect": "double",
+      "cost": 18
+    },
+    {
+      "id": "freeze_random",
+      "name": "Freeze al\u00e9atoire (prochaine manche)",
+      "type": "consumable",
+      "effect": "freeze_random",
+      "cost": 10
+    },
+    {
+      "id": "freeze_target",
+      "name": "Freeze cibl\u00e9 (1x)",
+      "type": "consumable",
+      "effect": "freeze_target",
+      "cost": 12
+    },
+    {
+      "id": "start_double",
+      "name": "Double coup au d\u00e9but de prochaine manche",
+      "type": "start_power",
+      "effect": "double_once",
+      "cost": 14
+    },
+    {
+      "id": "start_double_always",
+      "name": "Double coup au d\u00e9but de chaque manche",
+      "type": "start_power",
+      "effect": "double_always",
+      "cost": 40
+    },
+    {
+      "id": "white_bias",
+      "name": "+25% chance d'\u00eatre Blanc",
+      "type": "bias",
+      "side": "white",
+      "amount": 0.25,
+      "cost": 8
+    },
+    {
+      "id": "black_bias",
+      "name": "+25% chance d'\u00eatre Noir",
+      "type": "bias",
+      "side": "black",
+      "amount": 0.25,
+      "cost": 8
+    },
+    {
+      "id": "zero_cost_N",
+      "name": "25% coups gratuits : Cavaliers",
+      "type": "zero_cost",
+      "piece": "N",
+      "chance": 0.25,
+      "cost": 16
+    },
+    {
+      "id": "zero_cost_B",
+      "name": "25% coups gratuits : Fous",
+      "type": "zero_cost",
+      "piece": "B",
+      "chance": 0.25,
+      "cost": 16
+    },
+    {
+      "id": "zero_cost_R",
+      "name": "25% coups gratuits : Tours",
+      "type": "zero_cost",
+      "piece": "R",
+      "chance": 0.25,
+      "cost": 16
+    },
+    {
+      "id": "zero_cost_Q",
+      "name": "25% coups gratuits : Dames",
+      "type": "zero_cost",
+      "piece": "Q",
+      "chance": 0.25,
+      "cost": 22
+    },
+    {
+      "id": "zero_cost_P",
+      "name": "25% coups gratuits : Pions",
+      "type": "zero_cost",
+      "piece": "P",
+      "chance": 0.25,
+      "cost": 12
+    },
+    {
+      "id": "convert_piece",
+      "name": "Convertir une pi\u00e8ce",
+      "type": "convert",
+      "cost": 8
+    },
+    {
+      "id": "buy_piece",
+      "name": "Acheter une pi\u00e8ce",
+      "type": "buy",
+      "cost": 0
+    }
+  ],
+  "stages": [
+    {
+      "board": [
+        5,
+        5
+      ],
+      "player_start": {
+        "K": 1,
+        "R": 1,
+        "N": 1,
+        "P": 3
+      },
+      "enemy_start": {
+        "K": 1,
+        "N": 1,
+        "P": 3
+      }
+    },
+    {
+      "board": [
+        6,
+        6
+      ],
+      "enemy_boost": 1
+    },
+    {
+      "board": [
+        7,
+        7
+      ],
+      "enemy_boost": 2
+    },
+    {
+      "board": [
+        8,
+        8
+      ],
+      "enemy_boost": 3
+    }
+  ]
+}
