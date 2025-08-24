@@ -1,25 +1,24 @@
 
-import os, sys, json, random, math
+import os, sys, json, random, math, time
 import pygame
 from pygame.locals import *
 try:
     from .core.board import Board, Piece
     from .core.ai import choose_move
     from .ui.assets_loader import Assets
+    from .ui.buttons import Button
     from .meta.save import load_meta, save_meta
 except ImportError:
-    # Support running as a plain script (e.g., PyCharm 'Run main.py')
-    import os, sys
-    sys.path.append(os.path.dirname(__file__))  # add 'src' to path
+    sys.path.append(os.path.dirname(__file__))
     from core.board import Board, Piece
     from core.ai import choose_move
     from ui.assets_loader import Assets
+    from ui.buttons import Button
     from meta.save import load_meta, save_meta
-
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
-# Load content
+# Load content robustly
 CONTENT_PATHS = [
     os.path.join(BASE_DIR, "content", "shop_items.json"),
     os.path.join(os.path.dirname(__file__), "content", "shop_items.json"),
@@ -32,11 +31,10 @@ for _p in CONTENT_PATHS:
         break
 if CONTENT is None:
     raise FileNotFoundError(f"shop_items.json introuvable aux chemins: {CONTENT_PATHS}")
-# original open removed
-    CONTENT = json.load(f)
 
 PIECE_VALUES = CONTENT["piece_values"]
 TICK_COSTS = CONTENT["tick_costs"]
+FILES = "abcdefgh"
 
 def draw_text(surface, text, pos, size=22, color=(230,234,240), center=False):
     font = pygame.font.SysFont("arial", size, bold=True)
@@ -48,80 +46,203 @@ def draw_text(surface, text, pos, size=22, color=(230,234,240), center=False):
         r.topleft = pos
     surface.blit(s, r)
 
-class ChessRogueliteApp:
+def rounded_rect(surface, rect, color, radius=12):
+    pygame.draw.rect(surface, color, rect, border_radius=radius)
+
+class App:
     def __init__(self):
         pygame.init()
         info = pygame.display.Info()
-        self.fullscreen = False
-        w, h = int(info.current_w*0.9), int(info.current_h*0.9)
+        self.fullscreen=False
+        w,h = int(info.current_w*0.9), int(info.current_h*0.9)
         self.screen = pygame.display.set_mode((w,h), pygame.RESIZABLE)
         pygame.display.set_caption("ChessRoguelite")
         self.clock = pygame.time.Clock()
         self.assets = Assets(BASE_DIR)
-        self.tile = 96
+        self.tile=96
         self.assets.load(self.tile)
         self.meta = load_meta()
-        self.state = "menu"
-        self.message = ""
-        self.stage_index = 0
+        self.buttons=[]
+        self.btns_play=[]
+        self.state="menu"
+        self.message=""
+        self.stage_index=0
+        self.animations=[]
+        self.hover_tooltip=None
         self.reset_run()
+        self.build_menu_buttons()
     
     def reset_run(self):
-        self.stage_index = 0
-        self.gold = 0
-        self.double_start = False
-        self.double_start_always = False
-        self.freeze_random_next = False
-        self.freeze_target_stock = 0
-        self.bias_white = self.meta["permanent"]["bias_white"]
-        self.bias_black = self.meta["permanent"]["bias_black"]
-        self.zero_cost_probs = dict(self.meta["permanent"]["zero_cost_probs"])
-        self.board = None
+        self.btns_play = []
+        self.stage_index=0
+        self.gold=0
+        self.double_start=False
+        self.double_start_always=False
+        self.freeze_random_next=False
+        self.freeze_target_stock=0
+        self.bias_white=self.meta["permanent"]["bias_white"]
+        self.bias_black=self.meta["permanent"]["bias_black"]
+        self.zero_cost_probs=dict(self.meta["permanent"]["zero_cost_probs"])
+        self.enemy_tick_factor=1.0
         self.player_color = 'w' if random.random() < (0.5 + self.bias_white - self.bias_black) else 'b'
         self.enemy_color = 'b' if self.player_color=='w' else 'w'
-        self.stage_data = CONTENT["stages"][0]
-        self.board_w, self.board_h = self.stage_data["board"]
+        sd = CONTENT["stages"][0]
+        self.board_w,self.board_h = sd["board"]
         self.player_ticks = 100 + self.meta["permanent"]["start_ticks_bonus"]
         self.enemy_ticks = 100
-        self.player_army = dict(self.meta["starting_deck"])  # e.g., {"K":1,"R":1,"N":1,"P":3}
-        self.enemy_army = dict(self.stage_data["enemy_start"])
-        self.selection = None
-        self.legal_moves = []
-        self.turn = 'w'  # chess turn order for moves; ticks are budgets
-        self.place_armies()
-        self.frozen_coords = set()
-        if self.freeze_random_next:
-            self.apply_freeze_random_enemy()
+        self.player_army = dict(self.meta["starting_deck"])
+        self.enemy_army = dict(sd["enemy_start"])
+        self.selection=None; self.legal_moves=[]
+        self.place_armies_initial_layout()
+        self.frozen_coords=set()
+        self.pre_moves_left=0
+        self.turn='w'  # white moves first rules; start powers may give 2 moves
+        self.build_ingame_buttons()
     
-    def place_armies(self):
-        # Initialize board
+    
+    def place_armies_initial_layout(self):
+        # Tall orientation (width x height), start with 3x8 then widen to 8x8.
+        # We center 3 pawns on the front row and (R,K,N) on the back row with the King in the middle column.
         self.board = Board(self.board_w, self.board_h)
-        # Place player's pieces on bottom 2 ranks, enemy on top 2 ranks
-        def place(army, color, rows):
-            # simple placement left to right by kind priority
-            order = ["K","Q","R","B","N","A","P"]
-            x = 0
-            for kind in order:
-                count = army.get(kind,0)
-                for _ in range(count):
-                    # find next spot
-                    placed = False
-                    for ry in rows:
-                        for xx in range(self.board_w):
-                            if self.board.get(xx,ry) is None:
-                                self.board.set(xx,ry,Piece(kind, color))
-                                placed = True
-                                break
+        def center_cols(count, width):
+            if count >= width:
+                return list(range(width))
+            mid = width // 2
+            cols = []
+            # take mid, then expand left/right
+            cols.append(mid)
+            left = mid - 1
+            right = mid + 1
+            while len(cols) < count and (left >= 0 or right < width):
+                if left >= 0:
+                    cols.append(left)
+                    if len(cols) >= count: break
+                    left -= 1
+                if right < width:
+                    cols.append(right)
+                    right += 1
+            cols.sort()
+            return cols[:count]
+        def place_side(color):
+            if color == 'w':
+                pawn_row = self.board_h - 2
+                back_row = self.board_h - 1
+            else:
+                pawn_row = 1
+                back_row = 0
+            # choose 3 center columns (or fewer if width < 3)
+            cols3 = center_cols(3, self.board_w)
+            # place pawns (up to available)
+            army = self.player_army if color == self.player_color else self.enemy_army
+            p_count = min(army.get('P', 0), len(cols3))
+            for i in range(p_count):
+                self.board.set(cols3[i], pawn_row, Piece('P', color))
+            # place back pieces R K N on same 3 columns, K in the middle (closest to center)
+            back_kinds = ['R', 'K', 'N']
+            # Map K to center index among cols3
+            if len(cols3) >= 3:
+                ordered_cols = [cols3[0], cols3[1], cols3[2]]
+            else:
+                ordered_cols = cols3
+                back_kinds = back_kinds[:len(cols3)]
+            # ensure we only place if owned
+            owns = {k: army.get(k, 0) for k in ('R','K','N','B','Q','A')}
+            for kind, fx in zip(back_kinds, ordered_cols):
+                if owns.get(kind,0) > 0:
+                    self.board.set(fx, back_row, Piece(kind, color))
+            # place any extra owned pieces (B,Q,A or extra R/N) into remaining back/pawn rows
+            for kind in ('B','Q','A','R','N'):
+                extra = max(0, army.get(kind,0) - (1 if kind in ('R','K','N') else 0))
+                for _ in range(extra):
+                    placed=False
+                    for y in [back_row, pawn_row]:
+                        for x in range(self.board_w):
+                            if self.board.get(x,y) is None:
+                                self.board.set(x,y, Piece(kind, color)); placed=True; break
                         if placed: break
-            # ensure at least a King
         if self.player_color == 'w':
-            place(self.player_army,'w', [self.board_h-1, self.board_h-2, self.board_h-3])
-            place(self.enemy_army,'b', [0,1,2])
-            self.turn = 'w'
+            place_side('w'); place_side('b')
         else:
-            place(self.player_army,'b', [0,1,2])
-            place(self.enemy_army,'w', [self.board_h-1, self.board_h-2, self.board_h-3])
-            self.turn = 'w'  # white still moves first; bias handled by start powers
+            place_side('b'); place_side('w')
+    
+    def build_menu_buttons(self):
+        self.buttons = []
+        sw, sh = self.screen.get_size()
+        def add(y, text, cb):
+            rect = pygame.Rect(sw//2 - 180, y, 360, 52)
+            self.buttons.append(Button(rect, text, cb))
+        add(int(sh*0.55), "JOUER", self.start_game)
+        add(int(sh*0.55)+70, "OPTIONS", self.open_options)
+        add(int(sh*0.55)+140, "QUITTER", self.quit_game)
+
+        self.btns_play=[]
+        sw,sh=self.screen.get_size()
+        side_panel = max(360, sw//4)
+        x = sw - side_panel + 20
+        # place buttons below info area to avoid overlap
+        y = 200
+        self.btns_play.append(Button(pygame.Rect(x,y, side_panel-40, 44), "Options", self.open_options)); y+=58
+        self.btns_play.append(Button(pygame.Rect(x,y, side_panel-40, 44), "Aller au menu (sauver le deck)", self.back_to_menu)); y+=58
+        if self.freeze_target_stock>0:
+            self.btns_play.append(Button(pygame.Rect(x,y, side_panel-40, 44), "Utiliser Freeze ciblé", self.enter_freeze_mode)); y+=58
+    
+    def quit_game(self):
+        # Sauvegarde et fermeture propre
+        try:
+            self.meta["starting_deck"] = getattr(self, "player_army", self.meta.get("starting_deck", {}))
+            save_meta(self.meta)
+        except Exception:
+            pass
+        pygame.quit()
+        sys.exit(0)
+
+
+    def build_ingame_buttons(self):
+        # Buttons placed below the info block in right panel
+        self.btns_play = []
+        sw, sh = self.screen.get_size()
+        side_panel = max(360, sw // 4)
+        x = sw - side_panel + 20
+        y = 200  # below gold/ticks/manche info
+        self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Options", self.open_options)); y += 58
+        self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Aller au menu (sauver le deck)", self.back_to_menu)); y += 58
+        if self.freeze_target_stock > 0:
+            self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Utiliser Freeze ciblé", self.enter_freeze_mode)); y += 58
+
+
+    def build_shop_buttons(self):
+        # build 3 random offers + 'Continuer' button
+        self.shop_offers = random.sample(CONTENT["shop_pool"], 3)
+        self.shop_btns=[]
+        sw,sh=self.screen.get_size()
+        y=140
+        for it in self.shop_offers:
+            def make_cb(item=it):
+                def cb():
+                    self.purchase(item)
+                return cb
+            btn=Button(pygame.Rect(60,y, 760, 48), f"{it['name']}  (coût {it.get('cost',0)})", make_cb())
+            self.shop_btns.append(btn)
+            y+=70
+        self.shop_continue=Button(pygame.Rect(60,y+10, 300, 48), "Continuer", self.shop_continue_next)
+    
+    def start_game(self):
+        self.reset_run()
+        self.state="play"
+        # apply start powers per stage
+        self.start_stage()
+    
+    def open_options(self):
+        self.state="options"
+        self.build_options_buttons()
+    
+    def build_options_buttons(self):
+        self.opt_btns=[]
+        sw,sh=self.screen.get_size()
+        def add(y,text,cb):
+            self.opt_btns.append(Button(pygame.Rect(sw//2-220, y, 440, 52), text, cb))
+        add(int(sh*0.45), "Basculer plein écran / fenêtré", self.toggle_fullscreen)
+        add(int(sh*0.45)+70, "Retour", self.back_to_prev_from_options)
     
     def toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
@@ -131,425 +252,418 @@ class ChessRogueliteApp:
             info = pygame.display.Info()
             w,h = int(info.current_w*0.9), int(info.current_h*0.9)
             self.screen = pygame.display.set_mode((w,h), pygame.RESIZABLE)
-        self.refresh_layout()
-    
-    def refresh_layout(self):
-        # recompute tile based on window
-        W,H = self.screen.get_size()
-        side_panel = max(320, W//4)
-        self.tile = min((W-side_panel)//self.board_w, H//self.board_h)
         self.assets.load(self.tile)
+        if self.state=="play":
+            self.build_ingame_buttons()
+        elif self.state=="menu":
+            self.build_menu_buttons()
+        elif self.state=="options":
+            self.build_options_buttons()
+        elif self.state=="shop":
+            self.build_shop_buttons()
     
-    def draw_board(self):
-        W,H = self.screen.get_size()
-        side_panel = max(320, W//4)
-        ox = (W-side_panel - self.tile*self.board_w)//2
-        oy = (H - self.tile*self.board_h)//2
-        # board
-        col_a = (210,215,222)
-        col_b = (110,120,135)
-        for x in range(self.board_w):
-            for y in range(self.board_h):
-                r = pygame.Rect(ox+x*self.tile, oy+y*self.tile, self.tile, self.tile)
-                c = col_a if (x+y)%2==0 else col_b
-                pygame.draw.rect(self.screen, c, r)
-                # highlight legal
-                if self.selection and (x,y) in self.legal_moves:
-                    pygame.draw.rect(self.screen, (255, 210, 70), r, 4)
-                p = self.board.get(x,y)
-                if p:
-                    key = f"{p.color}_{('pawn' if p.kind=='P' else 'knight' if p.kind=='N' else 'bishop' if p.kind=='B' else 'rook' if p.kind=='R' else 'queen' if p.kind=='Q' else 'king' if p.kind=='K' else 'amazon')}"
-                    img = self.assets.pieces.get(key)
-                    if img:
-                        ir = img.get_rect()
-                        ir.center = r.center
-                        self.screen.blit(img, ir)
-                    if (x,y) in self.frozen_coords:
-                        # overlay freeze
-                        fr = pygame.Rect(r.x+6,r.y+6, self.tile-12, self.tile-12)
-                        s = pygame.Surface((fr.w, fr.h), pygame.SRCALPHA)
-                        s.fill((120,180,255,90))
-                        self.screen.blit(s, fr)
-        # side panel
-        panel = pygame.Rect(W - side_panel, 0, side_panel, H)
-        pygame.draw.rect(self.screen, (28,30,38), panel)
-        # info
-        self.screen.blit(self.assets.icons["coin"], (panel.x+16, 20))
-        draw_text(self.screen, f"Or : {self.gold}", (panel.x+58, 22), size=26)
-        self.screen.blit(self.assets.icons["tick"], (panel.x+16, 64))
-        draw_text(self.screen, f"Vos ticks : {int(self.player_ticks)}", (panel.x+58, 66), size=22)
-        draw_text(self.screen, f"Ticks ennemi : {int(self.enemy_ticks)}", (panel.x+58, 94), size=22, color=(180,200,220))
-        draw_text(self.screen, f"Manche : {self.stage_index+1}", (panel.x+16, 130), size=24)
-        if self.freeze_target_stock > 0:
-            self.screen.blit(self.assets.icons["freeze"], (panel.x+16, 170))
-            draw_text(self.screen, f"Freeze ciblé : {self.freeze_target_stock}", (panel.x+58, 174), size=22)
+    def back_to_prev_from_options(self):
+        # return to previous logical state (menu or play)
+        self.state = "menu" if self.board is None or self.stage_index==0 else "play"
+    
+    def back_to_menu(self):
+        self.meta["starting_deck"]=self.player_army
+        save_meta(self.meta)
+        self.state="menu"
+        self.build_menu_buttons()
+    
+    def enter_freeze_mode(self):
+        self.state="freeze_target"
+        self.message="Cliquez une pièce ennemie à geler (1 tour)."
+    
+    def start_stage(self):
         if self.double_start or self.double_start_always:
-            draw_text(self.screen, f"Double coup initial actif", (panel.x+16, 210), size=20, color=(255,230,130))
-        if self.message:
-            draw_text(self.screen, self.message, (panel.x+16, H-48), size=20, color=(220,220,255))
-        draw_text(self.screen, "O : Options | Échap : Menu", (panel.x+16, H-28), size=18, color=(180,190,200))
-        return ox, oy, side_panel
+            self.pre_moves_left=2
+        else:
+            self.pre_moves_left=0
+        if self.freeze_random_next:
+            self.apply_freeze_random_enemy(); self.freeze_random_next=False
+        self.build_ingame_buttons()
     
-    def cost_for_piece(self, kind):
-        base = TICK_COSTS.get(kind,100)
-        # zero-cost proc?
-        if random.random() < self.zero_cost_probs.get(kind,0.0):
-            return 0
-        return base
-    
-    def piece_value(self, kind):
-        return PIECE_VALUES.get(kind,0)
-    
-    def to_cell(self, mx,my, ox,oy):
-        x = (mx - ox) // self.tile
-        y = (my - oy) // self.tile
-        if 0 <= x < self.board_w and 0 <= y < self.board_h:
-            return int(x), int(y)
-        return None
+    def end_stage(self, win:bool):
+        bonus = int(self.player_ticks * CONTENT["tick_reward_factor"])
+        if win:
+            self.gold += bonus + 5
+        if win:
+            self.stage_index += 1
+            if self.stage_index >= len(CONTENT["stages"]):
+                # unlock amazon
+                if not self.meta["amazon_unlocked"]:
+                    self.meta["amazon_unlocked"]=True
+                self.meta["stats"]["runs"]+=1
+                self.meta["stats"]["wins"]+=1
+                save_meta(self.meta)
+                self.state="meta"
+            else:
+                sd = CONTENT["stages"][self.stage_index]
+                self.board_w,self.board_h = sd["board"]
+                boost=sd.get("enemy_boost",0)
+                for _ in range(boost):
+                    kind = random.choice(['P','N','B','R'])
+                    self.enemy_army[kind]=self.enemy_army.get(kind,0)+1
+                self.player_ticks += CONTENT["tick_bonus_per_stage"]
+                self.enemy_ticks += CONTENT["tick_bonus_per_stage"]
+                # reposition with current armies (lost pieces persist lost)
+                self.place_armies_initial_layout()
+                self.selection=None; self.legal_moves=[]
+                self.state="shop"
+                self.build_shop_buttons()
+        else:
+            self.meta["stats"]["runs"]+=1
+            save_meta(self.meta)
+            self.state="meta"
     
     def apply_freeze_random_enemy(self):
-        # mark a random enemy piece (not king) as frozen for 1 move
-        coords = []
+        coords=[]
         for x in range(self.board_w):
             for y in range(self.board_h):
-                p = self.board.get(x,y)
-                if p and p.color == self.enemy_color and p.kind != 'K':
+                p=self.board.get(x,y)
+                if p and p.color==self.enemy_color and p.kind!='K':
                     coords.append((x,y))
         if coords:
             self.frozen_coords.add(random.choice(coords))
     
-    def start_stage(self):
-        # apply start powers
-        if self.double_start or self.double_start_always:
-            # allow two player moves before enemy moves
-            self.turn = self.player_color
-            self.pre_moves_left = 2
-        else:
-            self.pre_moves_left = 0
-        if self.freeze_random_next:
-            self.apply_freeze_random_enemy()
-            self.freeze_random_next = False
+    # Helpers
+    def cost_for_piece(self, kind):
+        base=TICK_COSTS.get(kind,100)
+        if random.random() < self.zero_cost_probs.get(kind,0.0):
+            return 0
+        return base
+    def piece_value(self, kind):
+        return PIECE_VALUES.get(kind,0)
     
-    def end_stage(self, win:bool):
-        # reward ticks remaining
-        bonus = int(self.player_ticks * CONTENT["tick_reward_factor"])
-        if win:
-            self.gold += bonus + 5  # small prime for winning
-        # progress or finish
-        if win:
-            self.stage_index += 1
-            if self.stage_index >= len(CONTENT["stages"]):
-                # unlock amazon meta
-                if not self.meta["amazon_unlocked"]:
-                    self.meta["amazon_unlocked"] = True
-                self.meta["stats"]["runs"] += 1
-                self.meta["stats"]["wins"] += 1
-                save_meta(self.meta)
-                self.state = "meta"  # meta screen
-            else:
-                # prepare next stage
-                sd = CONTENT["stages"][self.stage_index]
-                self.board_w, self.board_h = sd["board"]
-                # enemy boost: add random piece(s)
-                boost = sd.get("enemy_boost",0)
-                for _ in range(boost):
-                    kind = random.choice(['P','N','B','R'])
-                    self.enemy_army[kind] = self.enemy_army.get(kind,0)+1
-                self.player_ticks += CONTENT["tick_bonus_per_stage"]
-                self.enemy_ticks += CONTENT["tick_bonus_per_stage"]
-                # re-place armies with current deck (lost pieces are lost)
-                self.place_armies()
-                self.selection=None; self.legal_moves=[]
-                self.state = "shop"
-        else:
-            # lose run
-            self.meta["stats"]["runs"] += 1
-            save_meta(self.meta)
-            self.state = "meta"
+    def world_layout(self):
+        W,H=self.screen.get_size()
+        side_panel=max(360, W//4)
+        ox = (W-side_panel - self.tile*self.board_w)//2
+        oy = (H - self.tile*self.board_h)//2
+        return ox,oy,side_panel
+    
+    def to_cell(self, mx,my, ox,oy):
+        x=(mx-ox)//self.tile; y=(my-oy)//self.tile
+        if 0<=x<self.board_w and 0<=y<self.board_h: return int(x),int(y)
+        return None
+    
+    def animate_move(self, x1,y1,x2,y2):
+        # simple 0.18s tween
+        duration=180
+        start=pygame.time.get_ticks()
+        W,H=self.screen.get_size()
+        ox,oy,sp = self.world_layout()
+        start_px=(ox+x1*self.tile+self.tile//2, oy+y1*self.tile+self.tile//2)
+        end_px=(ox+x2*self.tile+self.tile//2, oy+y2*self.tile+self.tile//2)
+        p=self.board.get(x1,y1)
+        key=f"{p.color}_{'pawn' if p.kind=='P' else 'knight' if p.kind=='N' else 'bishop' if p.kind=='B' else 'rook' if p.kind=='R' else 'queen' if p.kind=='Q' else 'king' if p.kind=='K' else 'amazon'}"
+        sprite=self.assets.pieces[key]
+        while pygame.time.get_ticks()-start < duration:
+            t=(pygame.time.get_ticks()-start)/duration
+            cx=int(start_px[0]*(1-t)+end_px[0]*t)
+            cy=int(start_px[1]*(1-t)+end_px[1]*t)
+            self.draw_play()
+            sr=sprite.get_rect(center=(cx,cy))
+            self.screen.blit(sprite, sr)
+            pygame.display.flip()
+            self.clock.tick(60)
     
     def do_player_move(self, x1,y1,x2,y2):
-        p = self.board.get(x1,y1)
-        t = self.board.get(x2,y2)
+        p=self.board.get(x1,y1); t=self.board.get(x2,y2)
+        self.animate_move(x1,y1,x2,y2)
         self.board.move_and_promote(x1,y1,x2,y2)
         if t:
-            val = self.piece_value(t.kind)
-            self.gold += val
-        cost = self.cost_for_piece(p.kind)
+            self.gold += self.piece_value(t.kind)
+        cost=self.cost_for_piece(p.kind)
         self.player_ticks -= cost
-        # check end conditions
         if self.player_ticks <= 0:
-            self.message = "Vous manquez de temps !"
-            self.end_stage(False)
-            return
-        # enemy king captured?
-        ek = self.board.locate_king(self.enemy_color)
+            self.message="Vous manquez de temps !"; self.end_stage(False); return
+        ek=self.board.locate_king(self.enemy_color)
         if ek is None:
-            self.message = "Roi ennemi capturé !"
-            self.end_stage(True)
-            return
-        # turn switch logic
-        if self.pre_moves_left > 0:
-            self.pre_moves_left -= 1
-            if self.pre_moves_left == 0:
-                self.turn = self.enemy_color
+            self.message="Roi ennemi capturé !"; self.end_stage(True); return
+        if self.pre_moves_left>0:
+            self.pre_moves_left-=1
+            if self.pre_moves_left==0: self.turn=self.enemy_color
         else:
-            self.turn = self.enemy_color
+            self.turn=self.enemy_color
     
     def do_enemy_turn(self):
-        # unfreeze if freezing marker
-        # enemy tries to move; skip if selected piece is frozen
-        move = choose_move(self.board, self.enemy_color)
+        move=choose_move(self.board, self.enemy_color)
         if move is None:
-            # no legal moves -> you win
-            self.message = "L'ennemi est bloqué !"
-            self.end_stage(True); return
-        (x1,y1),(x2,y2) = move
+            self.message="L'ennemi est bloqué !"; self.end_stage(True); return
+        (x1,y1),(x2,y2)=move
         if (x1,y1) in self.frozen_coords:
-            # consume freeze and skip move
             self.frozen_coords.discard((x1,y1))
-            self.turn = self.player_color
-            return
-        p = self.board.get(x1,y1)
-        t = self.board.get(x2,y2)
+            self.turn=self.player_color; return
+        p=self.board.get(x1,y1); t=self.board.get(x2,y2)
+        # animate enemy
+        self.animate_move(x1,y1,x2,y2)
         self.board.move_and_promote(x1,y1,x2,y2)
-        if t:
-            # enemy capturing your piece -> no gold change
-            pass
-        cost = TICK_COSTS.get(p.kind,100)
-        # apply -ticks enemy effects via multiplicative factor if set (tracked via enemy_tick_factor)
-        cost *= getattr(self, "enemy_tick_factor", 1.0)
+        cost=TICK_COSTS.get(p.kind,100)*self.enemy_tick_factor
         self.enemy_ticks -= cost
         if self.enemy_ticks <= 0:
-            self.message = "L'ennemi manque de temps !"
-            self.end_stage(True); return
-        # your king captured?
-        pk = self.board.locate_king(self.player_color)
+            self.message="L'ennemi manque de temps !"; self.end_stage(True); return
+        pk=self.board.locate_king(self.player_color)
         if pk is None:
-            self.message = "Votre roi est capturé..."
-            self.end_stage(False); return
-        self.turn = self.player_color
+            self.message="Votre roi est capturé..."; self.end_stage(False); return
+        self.turn=self.player_color
     
-    def open_options(self):
-        # simple toggle fullscreen
-        self.toggle_fullscreen()
+    # SHOP
+    def purchase(self, item):
+        cost=item.get('cost',0)
+        if self.gold < cost:
+            self.message="Pas assez d'or."; return
+        t=item['type']
+        if t=='tick':
+            self.player_ticks += item['amount']
+        elif t=='tick_enemy':
+            self.enemy_tick_factor = max(0.5, 1.0 + item['amount'])
+        elif t=='economy' and item.get('effect')=='double':
+            self.gold *= 2
+        elif t=='consumable':
+            if item['effect']=='freeze_random':
+                self.freeze_random_next=True
+            elif item['effect']=='freeze_target':
+                self.freeze_target_stock += 1
+        elif t=='start_power':
+            if item['effect']=='double_once': self.double_start=True
+            else: self.double_start_always=True
+        elif t=='bias':
+            if item['side']=='white': self.bias_white += item['amount']
+            else: self.bias_black += item['amount']
+        elif t=='zero_cost':
+            k=item['piece']; self.zero_cost_probs[k]=min(0.95, self.zero_cost_probs.get(k,0)+item['chance'])
+        elif t=='convert':
+            self.convert_piece_dialog()
+        elif t=='buy':
+            self.buy_piece_dialog()
+        self.gold -= cost
+        self.message=f"Achat : {item['name']}"
     
+    def shop_continue_next(self):
+        # proceed to next stage
+        self.start_stage()
+        self.state="play"
+    
+    def convert_piece_dialog(self):
+        options=[]
+        for k,v in CONTENT["convert_costs"].items():
+            src,dst=k.split("->")
+            if self.player_army.get(src,0)>0:
+                options.append((src,dst,v))
+        if not options:
+            self.message="Aucune conversion possible."; return
+        options.sort(key=lambda x:x[2])
+        src,dst,cost=options[0]
+        if self.gold < cost:
+            self.message=f"Conversion {src}->{dst} coûte {cost} or."; return
+        self.player_army[src]-=1
+        self.player_army[dst]=self.player_army.get(dst,0)+1
+        self.gold -= cost
+        self.message=f"Converti {src} en {dst}."
+    
+    def buy_piece_dialog(self):
+        pool=['P','N','B','R','Q']
+        if self.meta["amazon_unlocked"]: pool.append('A')
+        kind=random.choice(pool); cost=CONTENT["buy_costs"][kind]
+        if self.gold < cost:
+            self.message=f"Acheter {kind} coûte {cost} or."; return
+        self.player_army[kind]=self.player_army.get(kind,0)+1
+        self.gold -= cost
+        self.message=f"Acheté {kind}."
+    
+    # Drawing
     def draw_menu(self):
         self.screen.fill((24,26,32))
         if self.assets.logo:
-            lr = self.assets.logo.get_rect()
-            sr = self.screen.get_rect()
-            s = 0.6
-            logo = pygame.transform.smoothscale(self.assets.logo, (int(lr.w*s), int(lr.h*s)))
-            lr2 = logo.get_rect(center=(sr.w//2, sr.h//3))
-            self.screen.blit(logo, lr2)
-        draw_text(self.screen, "Entrée : Jouer   |   O : Options   |   Échap : Quitter", (self.screen.get_width()//2, int(self.screen.get_height()*0.7)), size=26, center=True)
+            lr=self.assets.logo.get_rect()
+            sr=self.screen.get_rect()
+            s=0.6
+            logo=pygame.transform.smoothscale(self.assets.logo,(int(lr.w*s),int(lr.h*s)))
+            self.screen.blit(logo, logo.get_rect(center=(sr.w//2, sr.h//3)))
+        for b in self.buttons: b.draw(self.screen)
+    
+    def draw_options(self):
+        self.screen.fill((22,24,30))
+        draw_text(self.screen, "OPTIONS", (self.screen.get_width()//2, 80), 32, center=True)
+        for b in self.opt_btns: b.draw(self.screen)
+    
+    def draw_coords(self, ox, oy):
+        # files a..h at bottom/top; ranks 1..H on left/right from white perspective
+        # bottom = white side (y = h-1)
+        for x in range(self.board_w):
+            letter=FILES[x]
+            draw_text(self.screen, letter, (ox + x*self.tile + self.tile//2, oy + self.board_h*self.tile + 6), size=18, color=(210,215,225), center=True)
+            draw_text(self.screen, letter, (ox + x*self.tile + self.tile//2, oy - 24), size=18, color=(210,215,225), center=True)
+        for y in range(self.board_h):
+            rank=str(self.board_h - y)
+            draw_text(self.screen, rank, (ox - 20, oy + y*self.tile + self.tile//2), size=18, color=(210,215,225), center=True)
+            draw_text(self.screen, rank, (ox + self.board_w*self.tile + 20, oy + y*self.tile + self.tile//2), size=18, color=(210,215,225), center=True)
+    
+    def piece_name_fr(self, kind):
+        return {'K':'Roi','Q':'Dame','R':'Tour','B':'Fou','N':'Cavalier','P':'Pion','A':'Amazone'}.get(kind,kind)
+    
+    def draw_tooltip(self, text, mx,my):
+        font=pygame.font.SysFont("arial", 18, bold=True)
+        s=font.render(text, True, (20,22,28))
+        pad=8
+        r=pygame.Rect(mx+16, my+16, s.get_width()+pad*2, s.get_height()+pad*2)
+        rounded_rect(self.screen, r, (235,238,245), radius=8)
+        self.screen.blit(s, (r.x+pad, r.y+pad))
+    
+    def draw_play(self):
+        self.screen.fill((16,18,24))
+        W,H=self.screen.get_size()
+        ox,oy,side_panel = self.world_layout()
+        # board
+        col_a=(210,215,222); col_b=(110,120,135)
+        for x in range(self.board_w):
+            for y in range(self.board_h):
+                r=pygame.Rect(ox+x*self.tile, oy+y*self.tile, self.tile, self.tile)
+                c=col_a if (x+y)%2==0 else col_b
+                pygame.draw.rect(self.screen, c, r)
+        # pieces
+        self.hover_tooltip=None
+        mx,my=pygame.mouse.get_pos()
+        for x in range(self.board_w):
+            for y in range(self.board_h):
+                r=pygame.Rect(ox+x*self.tile, oy+y*self.tile, self.tile, self.tile)
+                p=self.board.get(x,y)
+                if p:
+                    key=f"{p.color}_{'pawn' if p.kind=='P' else 'knight' if p.kind=='N' else 'bishop' if p.kind=='B' else 'rook' if p.kind=='R' else 'queen' if p.kind=='Q' else 'king' if p.kind=='K' else 'amazon'}"
+                    img=self.assets.pieces[key]
+                    ir=img.get_rect(center=r.center)
+                    self.screen.blit(img, ir)
+                    if r.collidepoint((mx,my)):
+                        self.hover_tooltip=self.piece_name_fr(p.kind)
+                if self.selection and (x,y) in self.legal_moves:
+                    pygame.draw.rect(self.screen, (255,210,70), r, 4)
+                if (x,y) in self.frozen_coords:
+                    fr=pygame.Rect(r.x+6, r.y+6, self.tile-12, self.tile-12)
+                    s=pygame.Surface((fr.w, fr.h), pygame.SRCALPHA)
+                    s.fill((120,180,255,90))
+                    self.screen.blit(s, fr)
+        # coords
+        self.draw_coords(ox,oy)
+        # side panel
+        panel=pygame.Rect(W-side_panel,0,side_panel,H)
+        pygame.draw.rect(self.screen, (28,30,38), panel)
+        # info
+        self.screen.blit(self.assets.icons["coin"], (panel.x+16, 20))
+        draw_text(self.screen, f"Or : {self.gold}", (panel.x+54, 22), 24)
+        self.screen.blit(self.assets.icons["tick"], (panel.x+16, 60))
+        draw_text(self.screen, f"Vos ticks : {int(self.player_ticks)}", (panel.x+54, 62), 22)
+        draw_text(self.screen, f"Ticks ennemi : {int(self.enemy_ticks)}", (panel.x+54, 90), 22, (180,200,220))
+        draw_text(self.screen, f"Manche : {self.stage_index+1}", (panel.x+16, 126), 24)
+        if self.double_start or self.double_start_always:
+            draw_text(self.screen, f"Double coup initial", (panel.x+16, 158), 20, (255,230,130))
+        if self.message:
+            draw_text(self.screen, self.message, (panel.x+16, H-48), 20, (220,220,255))
+        # buttons
+        for b in self.btns_play: b.draw(self.screen)
+        # tooltip
+        if self.hover_tooltip:
+            self.draw_tooltip(self.hover_tooltip, mx,my)
     
     def draw_shop(self):
         self.screen.fill((22,24,30))
-        draw_text(self.screen, "Boutique inter-manche — dépensez votre or", (40,30), size=28)
-        draw_text(self.screen, f"Or : {self.gold}", (40,70), size=24)
-        # List items
-        y = 120
-        self.shop_rects = []
-        for item in CONTENT["shop_pool"]:
-            name = item["name"]
-            cost = item.get("cost",0)
-            rect = pygame.Rect(40,y, 820, 36)
-            pygame.draw.rect(self.screen, (35,38,48), rect, border_radius=6)
-            draw_text(self.screen, f"{name}   (coût {cost})", (rect.x+10, rect.y+6), size=22)
-            self.shop_rects.append((rect,item))
-            y += 44
-        draw_text(self.screen, "C : Continuer sans achat", (40, y+20), size=20, color=(180,190,200))
-    
-    def handle_shop_click(self, mx,my):
-        for rect,item in self.shop_rects:
-            if rect.collidepoint(mx,my):
-                cost = item.get("cost",0)
-                if self.gold < cost:
-                    self.message = "Pas assez d'or."
-                    return
-                # handle purchase
-                t = item["type"]
-                if t == "tick":
-                    self.player_ticks += item["amount"]
-                elif t == "tick_enemy":
-                    self.enemy_tick_factor = max(0.5, 1.0 + item["amount"])  # reduce up to 50%
-                elif t == "economy" and item["effect"]=="double":
-                    self.gold *= 2
-                elif t == "consumable":
-                    if item["effect"]=="freeze_random":
-                        self.freeze_random_next = True
-                    elif item["effect"]=="freeze_target":
-                        self.freeze_target_stock += 1
-                elif t == "start_power":
-                    if item["effect"]=="double_once":
-                        self.double_start = True
-                    else:
-                        self.double_start_always = True
-                elif t == "bias":
-                    if item["side"]=="white": self.bias_white += item["amount"]
-                    else: self.bias_black += item["amount"]
-                elif t == "zero_cost":
-                    self.zero_cost_probs[item["piece"]] = min(0.95, self.zero_cost_probs.get(item["piece"],0)+item["chance"])
-                elif t == "convert":
-                    self.convert_piece_dialog()
-                elif t == "buy":
-                    self.buy_piece_dialog()
-                self.gold -= cost
-                self.message = f"Achat : {item['name']}"
-                return
-    
-    def convert_piece_dialog(self):
-        # Simplified: convert a P->N, P->B, N->R, R->Q etc based on available conversion costs
-        # Find any convertible owned piece according to CONTENT["convert_costs"]
-        options = []
-        for k,v in CONTENT["convert_costs"].items():
-            src, dst = k.split("->")
-            if self.player_army.get(src,0) > 0:
-                options.append((src,dst,v))
-        if not options:
-            self.message = "Aucune conversion possible."
-            return
-        # pick the cheapest by default
-        options.sort(key=lambda x:x[2])
-        src,dst,cost = options[0]
-        if self.gold < cost:
-            self.message = f"Conversion {src}->{dst} coûte {cost} or."
-            return
-        self.player_army[src] -= 1
-        self.player_army[dst] = self.player_army.get(dst,0)+1
-        self.gold -= cost
-        self.message = f"Converti {src} en {dst}."
-    
-    def buy_piece_dialog(self):
-        # Offer a random piece available, include Amazon if unlocked
-        pool = ['P','N','B','R','Q']
-        if self.meta["amazon_unlocked"]:
-            pool.append('A')
-        kind = random.choice(pool)
-        cost = CONTENT["buy_costs"][kind]
-        if self.gold < cost:
-            self.message = f"Acheter {kind} coûte {cost} or."
-            return
-        self.player_army[kind] = self.player_army.get(kind,0)+1
-        self.gold -= cost
-        self.message = f"Acheté {kind}."
+        draw_text(self.screen, "Boutique — 3 améliorations au choix", (60,60), 28)
+        draw_text(self.screen, f"Or : {self.gold}", (60, 96), 24)
+        for b in self.shop_btns: b.draw(self.screen)
+        self.shop_continue.draw(self.screen)
     
     def draw_meta(self):
         self.screen.fill((20,22,28))
-        draw_text(self.screen, "Fin de run — Progression méta", (40,40), size=28)
-        draw_text(self.screen, f"Amazon débloquée : {'Oui' if self.meta['amazon_unlocked'] else 'Non'}", (40,90), size=22)
-        draw_text(self.screen, "Entrée : Retour menu (deck sauvegardé)", (40, 140), size=22)
+        draw_text(self.screen, "Fin de run — Progression méta", (60,60), 28)
+        draw_text(self.screen, f"Amazon débloquée : {'Oui' if self.meta['amazon_unlocked'] else 'Non'}", (60, 100), 22)
+        # back to menu button
+        self.meta_btn = Button(pygame.Rect(60, 150, 300, 48), "Retour menu", self.back_to_menu)
+        self.meta_btn.draw(self.screen)
+    
+    def handle_play_click(self, pos):
+        mx,my=pos
+        ox,oy,sp = self.world_layout()
+        cell=self.to_cell(mx,my,ox,oy)
+        if cell:
+            x,y=cell
+            if self.selection is None:
+                p=self.board.get(x,y)
+                if p and p.color==self.player_color and self.turn==self.player_color:
+                    self.selection=(x,y)
+                    self.legal_moves=self.board.legal_moves_for(x,y)
+                else:
+                    self.message="Sélectionnez une de vos pièces."
+            else:
+                if (x,y) in self.legal_moves:
+                    x1,y1=self.selection
+                    self.do_player_move(x1,y1,x,y)
+                    self.selection=None; self.legal_moves=[]
+                else:
+                    self.selection=None; self.legal_moves=[]
+        # pass: handled by buttons
     
     def run(self):
-        running = True
+        running=True
         while running:
             dt = self.clock.tick(60)
             for ev in pygame.event.get():
-                if ev.type == QUIT:
-                    running = False
-                elif ev.type == KEYDOWN:
-                    if self.state == "menu":
-                        if ev.key == K_RETURN:
-                            self.state = "play"
-                            self.reset_run()
-                            self.start_stage()
-                        elif ev.key == K_o:
-                            self.open_options()
-                        elif ev.key == K_ESCAPE:
-                            running = False
-                    elif self.state == "play":
-                        if ev.key == K_ESCAPE:
-                            # save current deck
-                            self.meta["starting_deck"] = self.player_army
-                            save_meta(self.meta)
-                            self.state = "menu"
-                        elif ev.key == K_o:
-                            self.open_options()
-                        elif ev.key == K_f:
-                            if self.freeze_target_stock>0:
-                                # enter freeze targeting mode
-                                self.message = "Cliquez une pièce ennemie à geler (1 tour)."
-                                self.state = "freeze_target"
-                    elif self.state == "freeze_target":
-                        if ev.key == K_ESCAPE:
-                            self.state = "play"
-                    elif self.state == "shop":
-                        if ev.key == K_c:
-                            # continue to next stage
-                            self.start_stage()
-                            self.state = "play"
-                    elif self.state == "meta":
-                        if ev.key == K_RETURN:
-                            # persist deck to meta
-                            self.meta["starting_deck"] = self.player_army
-                            save_meta(self.meta)
-                            self.state = "menu"
-                elif ev.type == MOUSEBUTTONDOWN and ev.button==1:
-                    mx,my = ev.pos
-                    if self.state == "menu":
-                        pass
-                    elif self.state == "play":
-                        ox,oy,sp = self.draw_board()  # compute layout
-                        cell = self.to_cell(mx,my,ox,oy)
-                        if cell:
-                            x,y = cell
-                            if self.selection is None:
-                                p = self.board.get(x,y)
-                                if p and p.color == self.player_color and self.turn==self.player_color:
-                                    self.selection=(x,y)
-                                    self.legal_moves = self.board.legal_moves_for(x,y)
-                                else:
-                                    self.message = "Sélectionnez une de vos pièces."
-                            else:
-                                if (x,y) in self.legal_moves:
-                                    x1,y1 = self.selection
-                                    self.do_player_move(x1,y1,x,y)
-                                    self.selection=None; self.legal_moves=[]
-                                else:
-                                    self.selection=None; self.legal_moves=[]
-                        else:
-                            self.selection=None; self.legal_moves=[]
-                    elif self.state == "freeze_target":
-                        ox,oy,sp = self.draw_board()
-                        cell = self.to_cell(mx,my,ox,oy)
-                        if cell:
-                            x,y = cell
-                            p = self.board.get(x,y)
-                            if p and p.color == self.enemy_color:
-                                self.frozen_coords.add((x,y))
-                                self.freeze_target_stock -= 1
-                                self.message = "Pièce ennemie gelée (1 tour)."
-                                self.state = "play"
-                    elif self.state == "shop":
-                        self.handle_shop_click(mx,my)
+                if ev.type==QUIT: running=False
+                elif ev.type==VIDEORESIZE:
+                    self.assets.load(self.tile)
+                    if self.state=="menu": self.build_menu_buttons()
+                    if self.state=="play": self.build_ingame_buttons()
+                    if self.state=="shop": self.build_shop_buttons()
+                    if self.state=="options": self.build_options_buttons()
+                elif ev.type in (MOUSEMOTION,MOUSEBUTTONDOWN):
+                    if self.state=="menu":
+                        for b in self.buttons: b.handle_event(ev)
+                    elif self.state=="options":
+                        for b in self.opt_btns: b.handle_event(ev)
+                    elif self.state=="play":
+                        for b in self.btns_play: b.handle_event(ev)
+                        if ev.type==MOUSEBUTTONDOWN and ev.button==1:
+                            self.handle_play_click(ev.pos)
+                    elif self.state=="freeze_target":
+                        if ev.type==MOUSEBUTTONDOWN and ev.button==1:
+                            ox,oy,sp=self.world_layout()
+                            cell=self.to_cell(ev.pos[0], ev.pos[1], ox,oy)
+                            if cell:
+                                x,y=cell; p=self.board.get(x,y)
+                                if p and p.color==self.enemy_color:
+                                    self.frozen_coords.add((x,y))
+                                    self.freeze_target_stock-=1
+                                    self.message="Pièce ennemie gelée (1 tour)."
+                                    self.state="play"
+                    elif self.state=="shop":
+                        for b in self.shop_btns: b.handle_event(ev)
+                        self.shop_continue.handle_event(ev)
+                    elif self.state=="meta":
+                        if hasattr(self, 'meta_btn'):
+                            self.meta_btn.handle_event(ev)
+                # no keyboard shortcuts; buttons only
             
-            # Update logic
-            if self.state == "play":
-                if self.turn == self.enemy_color:
+            # game tick
+            if self.state=="play":
+                if self.turn==self.enemy_color:
                     self.do_enemy_turn()
             
-            # Draw
-            if self.state == "menu":
-                self.draw_menu()
-            elif self.state in ("play","freeze_target"):
-                self.screen.fill((16,18,24))
-                ox,oy,sp = self.draw_board()
-            elif self.state == "shop":
-                self.draw_shop()
-            elif self.state == "meta":
-                self.draw_meta()
+            # draw
+            if self.state=="menu": self.draw_menu()
+            elif self.state=="options": self.draw_options()
+            elif self.state in ("play","freeze_target"): self.draw_play()
+            elif self.state=="shop": self.draw_shop()
+            elif self.state=="meta": self.draw_meta()
             
             pygame.display.flip()
-        
-        # on quit, save meta deck
-        self.meta["starting_deck"] = self.player_army
+        # on quit
+        self.meta["starting_deck"]=self.player_army
         save_meta(self.meta)
         pygame.quit()
 
 def main():
-    app = ChessRogueliteApp()
-    app.run()
+    App().run()
 
 if __name__ == "__main__":
     main()

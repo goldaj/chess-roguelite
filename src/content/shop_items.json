@@ -17,8 +17,8 @@
     "A": 160,
     "K": 100
   },
-  "tick_bonus_per_stage": 20,
-  "tick_reward_factor": 0.05,
+  "tick_bonus_per_stage": 15,
+  "tick_reward_factor": 0.06,
   "buy_costs": {
     "P": 3,
     "N": 8,
@@ -28,14 +28,12 @@
     "A": 36
   },
   "convert_costs": {
-    "N->B": 4,
-    "B->N": 4,
     "P->N": 6,
     "P->B": 6,
     "P->R": 9,
     "P->Q": 15,
-    "B->R": 7,
     "N->R": 7,
+    "B->R": 7,
     "R->Q": 12
   },
   "shop_pool": [
@@ -90,7 +88,7 @@
     },
     {
       "id": "white_bias",
-      "name": "+25% chance d'\u00eatre Blanc",
+      "name": "+25% d'\u00eatre Blanc",
       "type": "bias",
       "side": "white",
       "amount": 0.25,
@@ -98,7 +96,7 @@
     },
     {
       "id": "black_bias",
-      "name": "+25% chance d'\u00eatre Noir",
+      "name": "+25% d'\u00eatre Noir",
       "type": "bias",
       "side": "black",
       "amount": 0.25,
@@ -160,8 +158,8 @@
   "stages": [
     {
       "board": [
-        5,
-        5
+        3,
+        8
       ],
       "player_start": {
         "K": 1,
@@ -171,23 +169,38 @@
       },
       "enemy_start": {
         "K": 1,
+        "R": 1,
         "N": 1,
         "P": 3
       }
     },
     {
       "board": [
-        6,
-        6
+        4,
+        8
       ],
       "enemy_boost": 1
     },
     {
       "board": [
-        7,
-        7
+        5,
+        8
       ],
       "enemy_boost": 2
+    },
+    {
+      "board": [
+        6,
+        8
+      ],
+      "enemy_boost": 2
+    },
+    {
+      "board": [
+        7,
+        8
+      ],
+      "enemy_boost": 3
     },
     {
       "board": [

@@ -1,10 +1,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict
-
-# Piece types: P, N, B, R, Q, K, A (Amazon)
-# Colors: 'w', 'b'
+from typing import List, Tuple, Optional
 
 SLIDERS = {'B','R','Q'}
 DIRS = {
@@ -22,162 +19,126 @@ class Piece:
 
 class Board:
     def __init__(self, w:int, h:int):
-        self.w = w
-        self.h = h
-        self.grid: List[List[Optional[Piece]]] = [[None for _ in range(h)] for __ in range(w)]
-    
-    def clone(self) -> 'Board':
-        b = Board(self.w, self.h)
-        for x in range(self.w):
-            for y in range(self.h):
-                p = self.grid[x][y]
-                if p: b.grid[x][y] = Piece(p.kind, p.color)
-        return b
-    
-    def in_bounds(self, x:int, y:int) -> bool:
-        return 0 <= x < self.w and 0 <= y < self.h
-    
-    def get(self, x:int, y:int) -> Optional[Piece]:
+        self.w=w; self.h=h
+        self.grid=[[None for _ in range(h)] for __ in range(w)]
+    def in_bounds(self,x:int,y:int)->bool:
+        return 0<=x<self.w and 0<=y<self.h
+    def get(self,x:int,y:int):
         if not self.in_bounds(x,y): return None
         return self.grid[x][y]
-    
-    def set(self, x:int, y:int, p:Optional[Piece]):
-        if self.in_bounds(x,y):
-            self.grid[x][y] = p
-    
-    def locate_king(self, color:str) -> Optional[Tuple[int,int]]:
+    def set(self,x:int,y:int,p):
+        if self.in_bounds(x,y): self.grid[x][y]=p
+    def locate_king(self,color:str):
         for x in range(self.w):
             for y in range(self.h):
-                p = self.grid[x][y]
-                if p and p.kind == 'K' and p.color == color:
-                    return (x,y)
+                p=self.get(x,y)
+                if p and p.kind=='K' and p.color==color: return (x,y)
         return None
-    
-    def is_attacked(self, x:int, y:int, by_color:str) -> bool:
-        # Knights
+    def clone(self):
+        b=Board(self.w,self.h)
+        for x in range(self.w):
+            for y in range(self.h):
+                p=self.grid[x][y]
+                if p: b.grid[x][y]=Piece(p.kind,p.color)
+        return b
+    def is_attacked(self,x:int,y:int, by_color:str)->bool:
+        # Knights + Amazon knight
         for dx,dy in DIRS['N']:
-            xx, yy = x+dx, y+dy
-            p = self.get(xx,yy)
-            if p and p.color == by_color:
-                if p.kind in ('N','A'):
-                    return True
+            p=self.get(x+dx,y+dy)
+            if p and p.color==by_color and p.kind in ('N','A'): return True
         # King
         for dx,dy in DIRS['K']:
-            xx, yy = x+dx, y+dy
-            p = self.get(xx,yy)
-            if p and p.color == by_color and p.kind == 'K':
-                return True
+            p=self.get(x+dx,y+dy)
+            if p and p.color==by_color and p.kind=='K': return True
         # Sliders
         def ray(dirs, allowed):
             for dx,dy in dirs:
-                xx,yy = x+dx,y+dy
+                xx,yy=x+dx,y+dy
                 while self.in_bounds(xx,yy):
-                    p = self.get(xx,yy)
-                    if p:
-                        if p.color == by_color and p.kind in allowed:
-                            return True
+                    t=self.get(xx,yy)
+                    if t:
+                        if t.color==by_color and t.kind in allowed: return True
                         break
                     xx+=dx; yy+=dy
             return False
-        if ray(DIRS['B'], ('B','Q','A')): return True
-        if ray(DIRS['R'], ('R','Q','A')): return True
+        if ray(DIRS['B'],('B','Q','A')): return True
+        if ray(DIRS['R'],('R','Q','A')): return True
         # Pawns
-        # Note: for attack squares we flip direction by color
-        if by_color == 'w':
+        if by_color=='w':
             for dx in (-1,1):
-                p = self.get(x+dx,y-1)
-                if p and p.color=='w' and p.kind=='P':
-                    return True
+                p=self.get(x+dx,y-1)
+                if p and p.color=='w' and p.kind=='P': return True
         else:
             for dx in (-1,1):
-                p = self.get(x+dx,y+1)
-                if p and p.color=='b' and p.kind=='P':
-                    return True
+                p=self.get(x+dx,y+1)
+                if p and p.color=='b' and p.kind=='P': return True
         return False
-    
-    def legal_moves_for(self, x:int, y:int) -> List[Tuple[int,int]]:
-        p = self.get(x,y)
+    def legal_moves_for(self,x:int,y:int):
+        p=self.get(x,y)
         if not p: return []
-        moves: List[Tuple[int,int]] = []
-        if p.kind == 'N':
+        moves=[]
+        if p.kind=='N':
             for dx,dy in DIRS['N']:
-                xx,yy = x+dx,y+dy
+                xx,yy=x+dx,y+dy
                 if not self.in_bounds(xx,yy): continue
-                t = self.get(xx,yy)
-                if not t or t.color != p.color:
-                    moves.append((xx,yy))
-        elif p.kind == 'K':
+                t=self.get(xx,yy)
+                if not t or t.color!=p.color: moves.append((xx,yy))
+        elif p.kind=='K':
             for dx,dy in DIRS['K']:
-                xx,yy = x+dx,y+dy
+                xx,yy=x+dx,y+dy
                 if not self.in_bounds(xx,yy): continue
-                t = self.get(xx,yy)
-                if not t or t.color != p.color:
-                    moves.append((xx,yy))
+                t=self.get(xx,yy)
+                if not t or t.color!=p.color: moves.append((xx,yy))
         elif p.kind in ('B','R','Q'):
             dirs = DIRS['B'] if p.kind=='B' else DIRS['R'] if p.kind=='R' else DIRS['Q']
             for dx,dy in dirs:
-                xx,yy = x+dx,y+dy
+                xx,yy=x+dx,y+dy
                 while self.in_bounds(xx,yy):
-                    t = self.get(xx,yy)
+                    t=self.get(xx,yy)
                     if t:
-                        if t.color != p.color:
-                            moves.append((xx,yy))
+                        if t.color!=p.color: moves.append((xx,yy))
                         break
-                    moves.append((xx,yy))
-                    xx+=dx; yy+=dy
-        elif p.kind == 'A':  # Amazon: Queen + Knight
-            # Queen part:
+                    moves.append((xx,yy)); xx+=dx; yy+=dy
+        elif p.kind=='A':
+            # Queen rays
             for dx,dy in DIRS['Q']:
-                xx,yy = x+dx,y+dy
+                xx,yy=x+dx,y+dy
                 while self.in_bounds(xx,yy):
-                    t = self.get(xx,yy)
+                    t=self.get(xx,yy)
                     if t:
-                        if t.color != p.color:
-                            moves.append((xx,yy))
+                        if t.color!=p.color: moves.append((xx,yy))
                         break
-                    moves.append((xx,yy))
-                    xx+=dx; yy+=dy
-            # Knight part:
+                    moves.append((xx,yy)); xx+=dx; yy+=dy
+            # Knight jumps
             for dx,dy in DIRS['N']:
-                xx,yy = x+dx,y+dy
+                xx,yy=x+dx,y+dy
                 if not self.in_bounds(xx,yy): continue
-                t = self.get(xx,yy)
-                if not t or t.color != p.color:
-                    moves.append((xx,yy))
-        elif p.kind == 'P':
+                t=self.get(xx,yy)
+                if not t or t.color!=p.color: moves.append((xx,yy))
+        elif p.kind=='P':
             diry = -1 if p.color=='w' else 1
-            # forward
-            fx, fy = x, y+diry
+            fx,fy=x,y+diry
             if self.in_bounds(fx,fy) and not self.get(fx,fy):
                 moves.append((fx,fy))
-                # no 2-step for simplicity
-            # captures
             for dx in (-1,1):
-                cx, cy = x+dx, y+diry
+                cx,cy=x+dx,y+diry
                 if self.in_bounds(cx,cy):
-                    t = self.get(cx,cy)
-                    if t and t.color != p.color:
-                        moves.append((cx,cy))
-        # filter out moves that leave king in check
-        km = self.locate_king(p.color)
-        if km is None:
-            # no king? then allow moves (edge case). Usually not happening.
-            return moves
-        legal: List[Tuple[int,int]] = []
+                    t=self.get(cx,cy)
+                    if t and t.color!=p.color: moves.append((cx,cy))
+        # filter self-check
+        km=self.locate_king(p.color)
+        legal=[]
         for (xx,yy) in moves:
-            b2 = self.clone()
+            b2=self.clone()
             b2.move_and_promote(x,y,xx,yy)
-            kpos = b2.locate_king(p.color)
-            if kpos is None or not b2.is_attacked(kpos[0],kpos[1], by_color=('w' if p.color=='b' else 'b')):
+            kp=b2.locate_king(p.color)
+            if kp and not b2.is_attacked(kp[0],kp[1], 'w' if p.color=='b' else 'b'):
                 legal.append((xx,yy))
         return legal
-    
-    def move_and_promote(self, x1:int,y1:int,x2:int,y2:int):
-        p = self.get(x1,y1)
+    def move_and_promote(self,x1,y1,x2,y2):
+        p=self.get(x1,y1)
         self.set(x1,y1,None)
-        # capture handled by overwrite
         if p and p.kind=='P':
-            # promotion to Queen at last rank
             if (p.color=='w' and y2==0) or (p.color=='b' and y2==self.h-1):
-                p = Piece('Q', p.color)
+                p=Piece('Q',p.color)
         self.set(x2,y2,p)
