@@ -49,6 +49,8 @@ def draw_text(surface, text, pos, size=22, color=(230,234,240), center=False):
 def rounded_rect(surface, rect, color, radius=12):
     pygame.draw.rect(surface, color, rect, border_radius=radius)
 
+PIECE_NAMES_FR = {'K':'Roi','Q':'Dame','R':'Tour','B':'Fou','N':'Cavalier','P':'Pion','A':'Amazone'}
+
 class App:
     def __init__(self):
         pygame.init()
@@ -232,6 +234,11 @@ class App:
     def build_shop_buttons(self):
         if self.phase != "inter":
             return  # guard: only between manches
+        # Build extended pool with transform offers
+        CONTENT['__shop_pool_extended'] = list(CONTENT['shop_pool'])
+        buy_costs = CONTENT.get('buy_costs', {'P':5,'N':12,'B':12,'R':18,'Q':30,'A':50})
+        for k in ['Q','R','B','N'] + (['A'] if self.meta.get('amazon_unlocked') else []):
+            CONTENT['__shop_pool_extended'].append({'id': f'transform_to_{k}', 'name': f'Transformer une pièce en {PIECE_NAMES_FR[k]}', 'type': 'transform_to', 'piece': k, 'cost': max(4, int(buy_costs.get(k,10)*0.6))})
         # build 3 random offers + 'Continuer' button
         self.shop_offers = random.sample(CONTENT["shop_pool"], 3)
         self.shop_btns=[]
@@ -411,6 +418,8 @@ class App:
     
     def do_player_move(self, x1,y1,x2,y2):
         p=self.board.get(x1,y1); t=self.board.get(x2,y2)
+        if p and p.kind=='P' and y2==0:
+            self.open_promotion_choice(x1,y1,x2,y2); return
         self.animate_move(x1,y1,x2,y2)
         self.board.move_and_promote(x1,y1,x2,y2)
         if t:
@@ -673,6 +682,46 @@ class App:
                     self.selection=None; self.legal_moves=[]
         # pass: handled by buttons
     
+    
+    def open_promotion_choice(self, x1,y1,x2,y2):
+        self.state = "promotion"
+        self.promo_from = (x1,y1)
+        self.promo_to = (x2,y2)
+        self.promo_btns = []
+        choices = ['Q','R','B','N']
+        if self.meta.get('amazon_unlocked'): choices.append('A')
+        sw, sh = self.screen.get_size()
+        w = 180; h = 48
+        start_x = sw//2 - (len(choices)*w + (len(choices)-1)*10)//2
+        y = sh//2 + 30
+        for i,k in enumerate(choices):
+            label = f"Promouvoir en {PIECE_NAMES_FR[k]}"
+            rect = pygame.Rect(start_x + i*(w+10), y, w, h)
+            self.promo_btns.append(Button(rect, label, lambda kk=k: self.complete_promotion(kk)))
+
+    def draw_promotion(self):
+        s = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        s.fill((0,0,0,160)); self.screen.blit(s, (0,0))
+        draw_text(self.screen, "Choisissez la promotion du pion", (self.screen.get_width()//2, self.screen.get_height()//2 - 10), 28, center=True)
+        for b in getattr(self,'promo_btns',[]): b.draw(self.screen)
+
+    def complete_promotion(self, kind):
+        x1,y1 = self.promo_from; x2,y2 = self.promo_to
+        t = self.board.get(x2,y2)
+        self.animate_move(x1,y1,x2,y2)
+        self.board.move_and_promote(x1,y1,x2,y2)
+        self.board.promote_at(x2,y2, kind)
+        if t:
+            self.gold += self.piece_value(t.kind)
+        cost = self.cost_for_piece('P')
+        self.player_ticks -= cost
+        self.state = "play"
+        self.turn = self.enemy_color
+        self.promo_btns = []
+        if self.player_ticks <= 0:
+            self.message="Vous manquez de temps !"; self.end_stage(False); return
+        self.do_enemy_turn()
+
     def run(self):
         running=True
         while running:
@@ -708,6 +757,11 @@ class App:
                     elif self.state=="shop":
                         for b in self.shop_btns: b.handle_event(ev)
                         self.shop_continue.handle_event(ev)
+                    elif self.state=="promotion":
+                        for b in getattr(self,'promo_btns',[]): b.handle_event(ev)
+                    elif self.state=="transform_select":
+                        if ev.type==pygame.MOUSEBUTTONDOWN and ev.button==1:
+                            self.handle_click_transform(*ev.pos)
                     elif self.state=="meta":
                         if hasattr(self, 'meta_btn'):
                             self.meta_btn.handle_event(ev)
@@ -725,6 +779,8 @@ class App:
             elif self.state=="options": self.draw_options()
             elif self.state in ("play","freeze_target"): self.draw_play()
             elif self.state=="shop": self.draw_shop()
+            elif self.state=="transform_select": self.draw_transform_select()
+            elif self.state=="promotion": self.draw_promotion()
             elif self.state=="meta": self.draw_meta()
             elif self.state=="meta_menu": self.draw_meta_menu()
             
@@ -739,3 +795,34 @@ def main():
 
 if __name__ == "__main__":
     main()
+    def try_transform_to(self, item):
+        cost = item.get('cost', 10)
+        kind = item['piece']
+        if self.gold < cost:
+            self.message = f"Pas assez d'or (coût {cost})."
+            return
+        self.state = "transform_select"
+        self.transform_target_kind = kind
+        self.transform_cost = cost
+        self.message = f"Sélectionnez votre pièce à transformer en {PIECE_NAMES_FR[kind]} (Roi exclu)."
+
+    def draw_transform_select(self):
+        self.draw_shop()  # draw shop background for context
+        s = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        s.fill((0,0,0,120)); self.screen.blit(s, (0,0))
+        draw_text(self.screen, self.message, (self.screen.get_width()//2, 90), 24, center=True)
+
+    def handle_click_transform(self, mx, my):
+        bx,by = self.screen_to_board(mx, my)
+        if bx is None: return
+        p = self.board.get(bx,by)
+        if not p or p.color != self.player_color:
+            self.message = "Cliquez sur l'une de VOS pièces."; return
+        if p.kind == 'K':
+            self.message = "Impossible de transformer le Roi."; return
+        if self.gold < self.transform_cost:
+            self.message = "Pas assez d'or."; return
+        self.gold -= self.transform_cost
+        self.board.set(bx, by, Piece(self.transform_target_kind, self.player_color, True))
+        self.state = "shop"
+        self.message = f"Transformée en {PIECE_NAMES_FR[self.transform_target_kind]}."

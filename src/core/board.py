@@ -156,3 +156,10 @@ class Board:
             if (p.color=='w' and y2==0) or (p.color=='b' and y2==self.h-1):
                 p=Piece('Q',p.color)
         self.set(x2,y2,p)
+
+
+    def promote_at(self, x, y, kind):
+        p = self.get(x,y)
+        if p is None: 
+            return
+        self.set(x,y, Piece(kind, p.color, True))
