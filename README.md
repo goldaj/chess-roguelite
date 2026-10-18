@@ -16,3 +16,4 @@ python src/main.py
 ```
 
 Tout se pilote **à la souris** (boutons).
+La progression personnelle (`src/meta/save.json`) reste sur le poste et est ignorée par Git. Le jeu crée son état local au besoin ; aucun fichier personnel ne doit être ajouté pour lancer le prototype.
