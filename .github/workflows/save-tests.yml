@@ -1,4 +1,4 @@
-name: Chess save tests
+name: Chess gameplay and persistence tests
 on:
   pull_request:
   push:
