@@ -240,7 +240,7 @@ class App:
         for k in ['Q','R','B','N'] + (['A'] if self.meta.get('amazon_unlocked') else []):
             CONTENT['__shop_pool_extended'].append({'id': f'transform_to_{k}', 'name': f'Transformer une pièce en {PIECE_NAMES_FR[k]}', 'type': 'transform_to', 'piece': k, 'cost': max(4, int(buy_costs.get(k,10)*0.6))})
         # build 3 random offers + 'Continuer' button
-        self.shop_offers = random.sample(CONTENT["shop_pool"], 3)
+        self.shop_offers = random.sample(CONTENT["__shop_pool_extended"], 3)
         self.shop_btns=[]
         sw,sh=self.screen.get_size()
         y=140
@@ -464,6 +464,10 @@ class App:
     # SHOP
     def purchase(self, item):
         cost=item.get('cost',0)
+        if item['type'] == 'transform_to':
+            # Cost is charged when a legal target is selected, not twice.
+            self.try_transform_to(item)
+            return
         if self.gold < cost:
             self.message="Pas assez d'or."; return
         t=item['type']
@@ -790,11 +794,6 @@ class App:
         save_meta(self.meta)
         pygame.quit()
 
-def main():
-    App().run()
-
-if __name__ == "__main__":
-    main()
     def try_transform_to(self, item):
         cost = item.get('cost', 10)
         kind = item['piece']
@@ -807,14 +806,17 @@ if __name__ == "__main__":
         self.message = f"Sélectionnez votre pièce à transformer en {PIECE_NAMES_FR[kind]} (Roi exclu)."
 
     def draw_transform_select(self):
-        self.draw_shop()  # draw shop background for context
+        self.draw_play()  # Show the board: the player must select a piece.
         s = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
         s.fill((0,0,0,120)); self.screen.blit(s, (0,0))
         draw_text(self.screen, self.message, (self.screen.get_width()//2, 90), 24, center=True)
 
     def handle_click_transform(self, mx, my):
-        bx,by = self.screen_to_board(mx, my)
-        if bx is None: return
+        ox, oy, _ = self.world_layout()
+        selected = self.to_cell(mx, my, ox, oy)
+        if selected is None:
+            return
+        bx, by = selected
         p = self.board.get(bx,by)
         if not p or p.color != self.player_color:
             self.message = "Cliquez sur l'une de VOS pièces."; return
@@ -826,3 +828,9 @@ if __name__ == "__main__":
         self.board.set(bx, by, Piece(self.transform_target_kind, self.player_color, True))
         self.state = "shop"
         self.message = f"Transformée en {PIECE_NAMES_FR[self.transform_target_kind]}."
+
+def main():
+    App().run()
+
+if __name__ == "__main__":
+    main()
