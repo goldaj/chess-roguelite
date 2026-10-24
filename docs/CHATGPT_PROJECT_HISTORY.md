@@ -15,3 +15,30 @@ Lancer `python -m src.main` après installation pygame et pillow ; préserver sa
 
 ## Limites
 Aucun AGENTS.md initial. Il manque encore les questions et réponses intégrales des anciennes séances ; aucun message de l'assistant n'est inventé. Compléter depuis les exports authentiques si disponibles, avec examen préalable des données sensibles avant toute publication. Ajouter ensuite des entrées horodatées `Utilisateur (verbatim)` / `Assistant (verbatim)` lorsque les textes exacts sont accessibles.
+
+## 2026-10-24 : revue multi-dépôts en parallèle de Codex (heure non attestée)
+
+**Utilisateur (verbatim, conversation présente)**
+
+> tu vois tout le boulot qu'on a fait sur la conversation Avancement projets codex ?
+> Tu vas refaire la même chose sur TOUT mon repo git. Tu vas commencer par les projets les plus gros, regarder ce que tu peux faire dessus et le faire sur ta branch (même consignes que sur l'autre conversation).
+> Tu vas ensuite me faire un rapport très succint des projets que t'as touché et de ce que t'as avancé dessus.
+> Amuse toi !
+
+**Assistant (résumé reconstruit, non verbatim)**
+
+Sauvegardes meta écrites atomiquement (tempfile + os.replace), test de maintien de l'ancien fichier en cas d'erreur et CI de non-régression. Travail isolé sur `chatgpt/review-20261024`, base inchangée.
+
+**Validation et confiance** : confiance élevée dans la modification ciblée ; ne pas supposer des tests locaux exécutés. Vérifier GitHub Actions et comparer avec le travail Codex avant intégration. Ne pas fusionner automatiquement. Aucun secret ou contenu privé de manuscrit ajouté.
+
+## 2026-10-24 — Chess Roguelite: achat et transformation persistants
+
+**Utilisateur (verbatim, heure de message non attestée)** : « je crois que ça a planté. Reprends là où tu t'es arrêté »
+
+**Utilisateur (résumé reconstruit, non verbatim)** : souhaite réduire les changements de structure et favoriser les corrections fonctionnelles et la poursuite des fonctions non terminées, dans des branches indépendantes que Codex peut choisir de reprendre ou non.
+
+**Assistant (résumé reconstruit, non verbatim)** : Les offres de la boutique se régénèrent seulement entre les manches et ne peuvent pas être rachetées plusieurs fois. Achat de pièces et conversion modifient réellement l'échiquier et la composition de l'armée, sans double débit de pièces d'or. Les transformations attendent une cible légale avant de débiter. L'Amazone reste verrouillée jusqu'à son déblocage. L'interface affiche les offres déjà achetées. Les précédents correctifs de prise en passant et promotion restent présents.
+
+**Validation** : GitHub Actions du commit 563ce2b7033451353976b4d5cd70ce3a3404bb05: 10 tests réussis le 24 octobre 2026, y compris les appels des méthodes réelles de boutique testées sans affichage. Pas de test utilisateur graphique.
+
+**Handoff Codex** : lire les changements sur `chatgpt/review-20261024`, poursuivre les éléments non terminés, puis choisir sélectivement les commits utiles. Aucun merge sur la branche principale.

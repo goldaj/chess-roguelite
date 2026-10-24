@@ -134,7 +134,9 @@ class Board:
                     if t and t.color!=p.color:
                         moves.append((cx,cy))
                     # en passant capture onto empty square equals en_passant
-                    elif self.en_passant == (cx,cy):
+                    elif (self.en_passant == (cx,cy) and t is None
+                          and (neighbor := self.get(cx, y)) is not None
+                          and neighbor.kind == 'P' and neighbor.color != p.color):
                         moves.append((cx,cy))
         # filter self-check
 
@@ -149,14 +151,28 @@ class Board:
         return legal
     def move_and_promote(self,x1,y1,x2,y2):
         p=self.get(x1,y1)
-        self.set(x1,y1,None)
-        if p:
-            p.moved = True
-        if p and p.kind=='P':
-            if (p.color=='w' and y2==0) or (p.color=='b' and y2==self.h-1):
-                p=Piece('Q',p.color)
-        self.set(x2,y2,p)
+        if p is None:
+            return
 
+        # A diagonal move to an empty square can capture a pawn en passant.
+        if (p.kind=='P' and x1!=x2 and self.get(x2,y2) is None
+                and self.en_passant==(x2,y2)):
+            victim=self.get(x2,y1)
+            if victim and victim.kind=='P' and victim.color!=p.color:
+                self.set(x2,y1,None)
+
+        # The opportunity only survives the immediately preceding move.
+        self.en_passant=None
+        if p.kind=='P' and x1==x2 and abs(y2-y1)==2:
+            self.en_passant=(x1,(y1+y2)//2)
+
+        self.set(x1,y1,None)
+        p.moved=True
+        if p.kind=='P':
+            promote_row=0 if p.color==self.bottom_color else self.h-1
+            if y2==promote_row:
+                p=Piece('Q',p.color,True)
+        self.set(x2,y2,p)
 
     def promote_at(self, x, y, kind):
         p = self.get(x,y)
