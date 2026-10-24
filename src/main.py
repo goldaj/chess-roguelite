@@ -679,8 +679,15 @@ class App:
         self.screen.fill((22,24,30))
         draw_text(self.screen, "Boutique — 3 améliorations au choix", (60,60), 28)
         draw_text(self.screen, f"Or : {self.gold}", (60, 96), 24)
-        for b in self.shop_btns: b.draw(self.screen)
+        for offer, button in zip(self.shop_offers, self.shop_btns):
+            bought = offer['id'] in self.purchased_offers
+            button.text = ("[ACHETÉ] " if bought else "") + (
+                f"{offer['name']}  (coût {offer.get('cost',0)})"
+            )
+            button.draw(self.screen)
         self.shop_continue.draw(self.screen)
+        if self.message:
+            draw_text(self.screen, self.message, (60, self.screen.get_height() - 55), 20)
     
     def draw_meta(self):
         self.screen.fill((20,22,28))
