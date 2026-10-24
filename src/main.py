@@ -92,6 +92,8 @@ class App:
         self.phase = "manche"
         self.btns_play = []
         self.stage_index=0
+        self.shop_stage_index = None
+        self.purchased_offers = set()
         self.manches_won = 0
         self.gold=0
         self.double_start=False
@@ -235,12 +237,18 @@ class App:
         if self.phase != "inter":
             return  # guard: only between manches
         # Build extended pool with transform offers
-        CONTENT['__shop_pool_extended'] = list(CONTENT['shop_pool'])
+        CONTENT['__shop_pool_extended'] = [
+            item for item in CONTENT['shop_pool']
+            if item.get('piece') != 'A' or self.meta.get('amazon_unlocked')
+        ]
         buy_costs = CONTENT.get('buy_costs', {'P':5,'N':12,'B':12,'R':18,'Q':30,'A':50})
         for k in ['Q','R','B','N'] + (['A'] if self.meta.get('amazon_unlocked') else []):
             CONTENT['__shop_pool_extended'].append({'id': f'transform_to_{k}', 'name': f'Transformer une pièce en {PIECE_NAMES_FR[k]}', 'type': 'transform_to', 'piece': k, 'cost': max(4, int(buy_costs.get(k,10)*0.6))})
         # build 3 random offers + 'Continuer' button
-        self.shop_offers = random.sample(CONTENT["__shop_pool_extended"], 3)
+        if getattr(self, 'shop_stage_index', None) != self.stage_index:
+            self.shop_stage_index = self.stage_index
+            self.purchased_offers = set()
+            self.shop_offers = random.sample(CONTENT["__shop_pool_extended"], 3)
         self.shop_btns=[]
         sw,sh=self.screen.get_size()
         y=140
@@ -463,40 +471,55 @@ class App:
     
     # SHOP
     def purchase(self, item):
-        cost=item.get('cost',0)
-        if item['type'] == 'transform_to':
-            # Cost is charged when a legal target is selected, not twice.
+        offer_id = item['id']
+        if offer_id in self.purchased_offers:
+            self.message = "Offre déjà achetée."
+            return
+        cost = item.get('cost', 0)
+        if self.gold < cost:
+            self.message = "Pas assez d'or."
+            return
+        t = item['type']
+        if t == 'transform_to':
             self.try_transform_to(item)
             return
-        if self.gold < cost:
-            self.message="Pas assez d'or."; return
-        t=item['type']
-        if t=='tick':
+        if t == 'buy_piece':
+            if not self.buy_piece_dialog(item['piece']):
+                return
+        elif t == 'convert':
+            if not self.convert_piece_dialog():
+                return
+        elif t == 'tick':
             self.player_ticks += item['amount']
-        elif t=='tick_enemy':
-            self.enemy_tick_factor = max(0.5, 1.0 + item['amount'])
-        elif t=='economy' and item.get('effect')=='double':
+        elif t == 'tick_enemy':
+            self.enemy_tick_factor = max(0.5, self.enemy_tick_factor + item['amount'])
+        elif t == 'economy' and item.get('effect') == 'double':
             self.gold *= 2
-        elif t=='consumable':
-            if item['effect']=='freeze_random':
-                self.freeze_random_next=True
-            elif item['effect']=='freeze_target':
+        elif t == 'consumable':
+            if item['effect'] == 'freeze_random':
+                self.freeze_random_next = True
+            elif item['effect'] == 'freeze_target':
                 self.freeze_target_stock += 1
-        elif t=='start_power':
-            if item['effect']=='double_once': self.double_start=True
-            else: self.double_start_always=True
-        elif t=='bias':
-            if item['side']=='white': self.bias_white += item['amount']
-            else: self.bias_black += item['amount']
-        elif t=='zero_cost':
-            k=item['piece']; self.zero_cost_probs[k]=min(0.95, self.zero_cost_probs.get(k,0)+item['chance'])
-        elif t=='convert':
-            self.convert_piece_dialog()
-        elif t=='buy':
-            self.buy_piece_dialog()
+        elif t == 'start_power':
+            if item['effect'] == 'double_once':
+                self.double_start = True
+            else:
+                self.double_start_always = True
+        elif t == 'bias':
+            if item['side'] == 'white':
+                self.bias_white += item['amount']
+            else:
+                self.bias_black += item['amount']
+        elif t == 'zero_cost':
+            kind = item['piece']
+            self.zero_cost_probs[kind] = min(0.95, self.zero_cost_probs.get(kind, 0) + item['chance'])
+        else:
+            self.message = "Offre inconnue."
+            return
         self.gold -= cost
-        self.message=f"Achat : {item['name']}"
-    
+        self.purchased_offers.add(offer_id)
+        self.message = f"Achat : {item['name']}"
+
     def shop_continue_next(self):
         # proceed to next manche
         self.phase = "manche"
@@ -504,32 +527,35 @@ class App:
         self.state="play"
     
     def convert_piece_dialog(self):
-        options=[]
-        for k,v in CONTENT["convert_costs"].items():
-            src,dst=k.split("->")
-            if self.player_army.get(src,0)>0:
-                options.append((src,dst,v))
-        if not options:
-            self.message="Aucune conversion possible."; return
-        options.sort(key=lambda x:x[2])
-        src,dst,cost=options[0]
-        if self.gold < cost:
-            self.message=f"Conversion {src}->{dst} coûte {cost} or."; return
-        self.player_army[src]-=1
-        self.player_army[dst]=self.player_army.get(dst,0)+1
-        self.gold -= cost
-        self.message=f"Converti {src} en {dst}."
-    
-    def buy_piece_dialog(self):
-        pool=['P','N','B','R','Q']
-        if self.meta["amazon_unlocked"]: pool.append('A')
-        kind=random.choice(pool); cost=CONTENT["buy_costs"][kind]
-        if self.gold < cost:
-            self.message=f"Acheter {kind} coûte {cost} or."; return
-        self.player_army[kind]=self.player_army.get(kind,0)+1
-        self.gold -= cost
-        self.message=f"Acheté {kind}."
-    
+        """Change a real board piece, not only the future army counter."""
+        options = sorted(CONTENT["convert_costs"].items(), key=lambda entry: entry[1])
+        for rule, _ in options:
+            source, destination = rule.split("->")
+            for y in range(self.board_h):
+                for x in range(self.board_w):
+                    piece = self.board.get(x, y)
+                    if piece and piece.color == self.player_color and piece.kind == source:
+                        self.board.set(x, y, Piece(destination, self.player_color, True))
+                        self.player_army = self.count_army(self.player_color)
+                        return True
+        self.message = "Aucune pièce éligible à convertir."
+        return False
+
+    def buy_piece_dialog(self, kind):
+        """Place the purchased piece on a free home-rank square."""
+        if kind == 'A' and not self.meta.get('amazon_unlocked'):
+            self.message = "Amazone non débloquée."
+            return False
+        home_rows = (self.board_h - 1, self.board_h - 2)
+        for y in home_rows:
+            for x in range(self.board_w):
+                if self.board.get(x, y) is None:
+                    self.board.set(x, y, Piece(kind, self.player_color))
+                    self.player_army = self.count_army(self.player_color)
+                    return True
+        self.message = "Aucune case de départ libre pour cette pièce."
+        return False
+
     # Drawing
     
     def open_meta(self):
@@ -803,6 +829,7 @@ class App:
         self.state = "transform_select"
         self.transform_target_kind = kind
         self.transform_cost = cost
+        self.transform_offer_id = item['id']
         self.message = f"Sélectionnez votre pièce à transformer en {PIECE_NAMES_FR[kind]} (Roi exclu)."
 
     def draw_transform_select(self):
@@ -826,6 +853,8 @@ class App:
             self.message = "Pas assez d'or."; return
         self.gold -= self.transform_cost
         self.board.set(bx, by, Piece(self.transform_target_kind, self.player_color, True))
+        self.player_army = self.count_army(self.player_color)
+        self.purchased_offers.add(self.transform_offer_id)
         self.state = "shop"
         self.message = f"Transformée en {PIECE_NAMES_FR[self.transform_target_kind]}."
 
