@@ -30,3 +30,15 @@ Aucun AGENTS.md initial. Il manque encore les questions et réponses intégrales
 Sauvegardes meta écrites atomiquement (tempfile + os.replace), test de maintien de l'ancien fichier en cas d'erreur et CI de non-régression. Travail isolé sur `chatgpt/review-20261024`, base inchangée.
 
 **Validation et confiance** : confiance élevée dans la modification ciblée ; ne pas supposer des tests locaux exécutés. Vérifier GitHub Actions et comparer avec le travail Codex avant intégration. Ne pas fusionner automatiquement. Aucun secret ou contenu privé de manuscrit ajouté.
+
+## 2026-10-24 — Chess Roguelite: achat et transformation persistants
+
+**Utilisateur (verbatim, heure de message non attestée)** : « je crois que ça a planté. Reprends là où tu t'es arrêté »
+
+**Utilisateur (résumé reconstruit, non verbatim)** : souhaite réduire les changements de structure et favoriser les corrections fonctionnelles et la poursuite des fonctions non terminées, dans des branches indépendantes que Codex peut choisir de reprendre ou non.
+
+**Assistant (résumé reconstruit, non verbatim)** : Les offres de la boutique se régénèrent seulement entre les manches et ne peuvent pas être rachetées plusieurs fois. Achat de pièces et conversion modifient réellement l'échiquier et la composition de l'armée, sans double débit de pièces d'or. Les transformations attendent une cible légale avant de débiter. L'Amazone reste verrouillée jusqu'à son déblocage. L'interface affiche les offres déjà achetées. Les précédents correctifs de prise en passant et promotion restent présents.
+
+**Validation** : GitHub Actions du commit 563ce2b7033451353976b4d5cd70ce3a3404bb05: 10 tests réussis le 24 octobre 2026, y compris les appels des méthodes réelles de boutique testées sans affichage. Pas de test utilisateur graphique.
+
+**Handoff Codex** : lire les changements sur `chatgpt/review-20261024`, poursuivre les éléments non terminés, puis choisir sélectivement les commits utiles. Aucun merge sur la branche principale.
