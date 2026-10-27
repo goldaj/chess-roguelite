@@ -96,3 +96,40 @@ Cette contribution de vraie fonctionnalité doit être revue **après la PR #2 (
 ## 7. Décision scientifique
 
 Une IA simple gagnant/perdant contre elle-même ne suffit pas pour prétendre avoir trouvé « l'équilibrage pertinent ». La première expérience a invalidé notre ancienne règle de victoire automatique. Le nouveau protocole sert à **falsifier rapidement** les règles et instrumenter des vraies parties, non à faire passer une intuition pour un jeu fini. Codex doit valider le changement d'objectif de manche auprès du propriétaire avant toute intégration en production.
+
+
+## 8. Clôture de l'intervention après interruption, 27 octobre 2026
+
+**Consigne du propriétaire :** « T'as crash. Fini proprement ce que tu faisais. Documente tout pour le prochain qui travaille dessus. Et arrête toi proprement après. »
+
+Le présent travail a été **repris puis audité sans changement supplémentaire de règles**. La PR [#3](https://github.com/goldaj/chess-roguelite/pull/3) reste **draft et empilée sur la PR #2**, elle-même empilée sur la PR #1. Aucun `merge`, `rebase` destructif, déploiement ni modification de sauvegarde réelle de l'utilisateur.
+
+### Vérifications constatées sur le commit `a662b0903b520dfd17f852e589b131264929dc42`
+
+- [Push GitHub Actions #40581674885](https://github.com/goldaj/chess-roguelite/actions/runs/40581674885) : jobs `campaign-logic` et `campaign-pygame` **réussis** ; **46 tests en 0,732 s** sous Python 3.12, `compileall`, diagnostic statique et 36 sparrings `Board`/`AI` synthétiques, plus véritable initialisation Pygame avec SDL dummy.
+- [PR check #40581686522](https://github.com/goldaj/chess-roguelite/actions/runs/40581686522) : **réussi**.
+- [PR check #40581686741](https://github.com/goldaj/chess-roguelite/actions/runs/40581686741) : **réussi**.
+- Le diff PR #3 a été vérifié contre `research/gpt6-tactical-ai-after-review-20261027` : ajout de modules de campagne/formation, changements dans le jeu et contenu, tests, outils d'analyse et documents. Aucun changement à `develop`.
+
+**Note CI :** ces preuves concernent le commit ci-dessus ; tout commit documentaire de clôture déclenche potentiellement de nouveaux contrôles. Toujours vérifier le dernier commit GitHub avant fusion.
+
+### Prochain repreneur : ordre de travail avec véritables critères d'acceptation
+
+1. **Revoir la nouvelle règle de victoire avec le propriétaire**. Sur les manches 2 à 6, le timeout ennemi ne suffit plus : captures matérielles minimum requises. Sans accord explicite et sans test de ressenti, **pas de fusion en production**. Comparer le jeu initial et cette variante, pas seulement cette variante seule.
+2. **Réaliser deux runs humaines complètes**, une en Blanc et une en Noir, puis tester chaque voie `steady/safe/risk` et difficulté `easy/normal/hard`. Noter pour chaque manche les pertes, captures, pièces restantes, ticks, achats possibles, frustration, durée et abandons ; ne pas conclure depuis 36 combats `easy` contre `easy`.
+3. **Ajuster sur des données de jeu réelles** via `python tools/campaign_balance.py --save CHEMIN_EXPLICITE_VERS_SAUVEGARDE`, après avoir vérifié l'origine et l'accord d'utilisation des données. Conserver les pires cas et les échecs ; l'historique ne retient que 200 combats terminés et n'inclut ni version de jeu ni abandons.
+4. **Contrôler les limites connues de la règle et des achats** : promotion d'un pion ennemi peut perturber l'objectif calculé par différence de valeur matérielle du plateau ; boutique sur petit écran ; achat d'une pièce sans cases libres ; variété du marchand ; performances du mode Difficile ; pouvoir du double-coup lorsque l'IA commence en Blanc ; cycles de passage sans coups légaux. Écrire des tests ciblés avant modification.
+5. **Valider la progression de l'économie** (gains, coût d'achat, possibilités de rebond, effets dominants). Séparer le calibrage par difficulté d'IA et par route, sans inventer un réglage « universel ». Ne pas utiliser le matériau seul comme prédicteur de taux de victoire.
+6. **Revoir puis intégrer dans l'ordre** : PR #1 (règles/boutique), PR #2 (IA et gel), PR #3 (campagne et objectifs), en conservant les tests et leurs dépendances. Refuser tout merge automatique tant que les vérifications précédentes sont incomplètes.
+
+### Rejouer les preuves sans toucher à la production
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py' -v
+python tools/campaign_balance.py
+PYTHONPATH=. python tools/autoplay_balance.py
+# Après installation des dépendances du jeu :
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy PYTHONPATH=. python tests/smoke_pygame.py
+```
+
+Le script `autoplay_balance.py` produit des parties artificielles déterministes, pas une statistique humaine ; le script d'analyse peut lire un fichier de sauvegarde **uniquement si son chemin est spécifié**, et ne transmet rien. **Décision de clôture :** suspendre les modifications GPT6 ici et laisser les décisions de gameplay/validation humaine au prochain contributeur.
