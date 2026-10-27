@@ -708,8 +708,11 @@ class App:
             planned = prepare_encounter(CONTENT["stages"][self.stage_index], code)
             name = ROUTES[code]["label"]
             selected = "●" if self.route_choice == code else "○"
-            btn.text = (f"{selected} {name}: {planned['player_ticks']} ticks, "
-                        f"ennemi {planned['enemy_ticks']}, gain {planned['reward_gold']} or")
+            true_player_ticks = planned["player_ticks"] + self.shop_ticks_bonus
+            true_enemy_ticks = max(1, math.ceil(
+                planned["enemy_ticks"] * (1 - self.shop_enemy_tick_reduction)))
+            btn.text = (f"{selected} {name}: {true_player_ticks} ticks, "
+                        f"ennemi {true_enemy_ticks}, gain {planned['reward_gold']} or")
             btn.draw(self.screen)
         if self.message:
             draw_text(self.screen, self.message, (60, self.screen.get_height() - 55), 20)
