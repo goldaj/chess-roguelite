@@ -106,6 +106,7 @@ class App:
         self.active_route = "steady"
         self.route_choice = "steady"
         self.shop_ticks_bonus = 0
+        self.shop_enemy_tick_reduction = 0.0
         self.shop_stage_index = None
         self.purchased_offers = set()
         self.manches_won = 0
@@ -321,6 +322,7 @@ class App:
                 self.route_choice = "steady"
                 self.active_route = "steady"
                 self.shop_ticks_bonus = 0
+                self.shop_enemy_tick_reduction = 0.0
                 upcoming = prepare_encounter(CONTENT["stages"][self.stage_index])
                 self.board_w, self.board_h = upcoming["board"]
                 self.enemy_army = dict(upcoming["enemy_army"])
@@ -468,9 +470,10 @@ class App:
             self.shop_ticks_bonus += item['amount']
             self.player_ticks += item['amount']
         elif t == 'tick_enemy':
-            # Positive burn factor makes the enemy run OUT of ticks faster.
-            # Item amount is described as '-10% enemy ticks', i.e. easier.
-            self.enemy_tick_factor = min(2.0, self.enemy_tick_factor - item['amount'])
+            # Applies to NEXT combat's tick budget, not the burn speed of all
+            # future combats. The old sign actually helped the enemy.
+            self.shop_enemy_tick_reduction = min(
+                0.35, self.shop_enemy_tick_reduction + abs(item['amount']))
         elif t == 'economy' and item.get('effect') == 'double':
             # Avoid exponential free money across five shops.
             self.gold += min(self.gold, 36)
@@ -507,13 +510,17 @@ class App:
         self.player_army = self.count_army(self.player_color)
         self.enemy_army = dict(encounter["enemy_army"])
         self.player_ticks = encounter["player_ticks"] + self.shop_ticks_bonus
-        self.enemy_ticks = encounter["enemy_ticks"]
+        self.enemy_ticks = max(
+            1, math.ceil(encounter["enemy_ticks"] * (1 - self.shop_enemy_tick_reduction)))
         self.active_route = self.route_choice
         self.place_armies_initial_layout()
         self.frozen_coords.clear()
         self.selection = None
         self.legal_moves = []
         self.shop_ticks_bonus = 0
+        self.shop_enemy_tick_reduction = 0.0
+        # Existing rule: white plays first in each fresh encounter.
+        self.turn = 'w'
         self.phase = "manche"
         self.start_stage()
         self.state = "play"
