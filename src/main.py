@@ -105,6 +105,7 @@ class App:
         self.stage_index=0
         self.active_route = "steady"
         self.route_choice = "steady"
+        self.shop_ticks_bonus = 0
         self.shop_stage_index = None
         self.purchased_offers = set()
         self.manches_won = 0
@@ -190,7 +191,8 @@ class App:
         # Build extended pool with transform offers
         CONTENT['__shop_pool_extended'] = [
             item for item in CONTENT['shop_pool']
-            if item.get('piece') != 'A' or self.meta.get('amazon_unlocked')
+            if item.get('type') != 'bias'
+            and (item.get('piece') != 'A' or self.meta.get('amazon_unlocked'))
         ]
         buy_costs = CONTENT.get('buy_costs', {'P':5,'N':12,'B':12,'R':18,'Q':30,'A':50})
         for k in ['Q','R','B','N'] + (['A'] if self.meta.get('amazon_unlocked') else []):
@@ -199,7 +201,8 @@ class App:
         if getattr(self, 'shop_stage_index', None) != self.stage_index:
             self.shop_stage_index = self.stage_index
             self.purchased_offers = set()
-            self.shop_offers = random.sample(CONTENT["__shop_pool_extended"], 3)
+            self.shop_offers = draft_shop_offers(
+                CONTENT["__shop_pool_extended"], self.gold)
         self.shop_btns=[]
         sw,sh=self.screen.get_size()
         y=140
@@ -211,7 +214,20 @@ class App:
             btn=Button(pygame.Rect(60,y, 760, 48), f"{it['name']}  (coût {it.get('cost',0)})", make_cb())
             self.shop_btns.append(btn)
             y+=70
-        self.shop_continue=Button(pygame.Rect(60,y+10, 300, 48), "Continuer", self.shop_continue_next)
+        self.shop_continue=Button(pygame.Rect(60,y+10, 300, 48), "Combattre", self.shop_continue_next)
+        self.shop_route_btns = []
+        # Strategic choice is available at every intermission, not a hidden
+        # modifier applied after shopping. Changes to route do not reset buys.
+        for i, route in enumerate(ROUTES):
+            self.shop_route_btns.append(Button(
+                pygame.Rect(60, 440+i*54, min(760, sw-120), 46),
+                "", lambda selected=route: self.select_route(selected)))
+
+    def select_route(self, route):
+        if route not in ROUTES:
+            raise ValueError("unknown route")
+        self.route_choice = route
+        self.message = f"Voie {ROUTES[route]['label']} choisie."
     
     def start_game(self):
         self.reset_run()
@@ -274,56 +290,54 @@ class App:
     
     def start_stage(self):
         self.recompute_tile()
-        if self.double_start or self.double_start_always:
-            self.pre_moves_left=2
-        else:
-            self.pre_moves_left=0
+        self.pre_moves_left = 2 if (self.double_start or self.double_start_always) else 0
+        # 'next stage' must be consumed once; permanent buff remains separate.
+        self.double_start = False
         if self.freeze_random_next:
             self.apply_freeze_random_enemy(); self.freeze_random_next=False
         self.build_ingame_buttons()
     
-    def end_stage(self, win:bool):
-        bonus = int(self.player_ticks * CONTENT["tick_reward_factor"])
+    def end_stage(self, win: bool):
         if win:
-            self.gold += bonus + 5
-        if win:
+            # Earning rewards is a consequence of the chosen route, not a
+            # random extra roll hidden from the player.
+            self.gold += victory_reward(
+                CONTENT["stages"][self.stage_index], self.active_route,
+                self.player_ticks, CONTENT["tick_reward_factor"])
             self.manches_won += 1
             self.stage_index += 1
             if self.stage_index >= len(CONTENT["stages"]):
-                if not self.meta["amazon_unlocked"]:
-                    self.meta["amazon_unlocked"] = True
+                self.meta["amazon_unlocked"] = True
                 self.meta["stats"]["runs"] += 1
                 self.meta["stats"]["wins"] += 1
                 save_meta(self.meta)
+                self.message = "Le Roi de fer est vaincu !"
                 self.state = "meta"
             else:
-                # Prepare next manche
-                sd = CONTENT["stages"][self.stage_index]
-                self.board_w, self.board_h = sd["board"]
-                self.recompute_tile()
-                # Player carries over surviving pieces
+                # Restore all surviving (and previously purchased) pieces.
+                # Shop purchases act on this board before the chosen route
+                # rebuilds the opposing formation on 'Combattre'.
                 self.player_army = self.count_army(self.player_color)
-                # Enemy refreshes from base + boosts
-                base_enemy = sd.get("enemy_start", {"K":1, "P":3})
-                self.enemy_army = dict(base_enemy)
-                boost = sd.get("enemy_boost", 0)
-                for _ in range(boost):
-                    kind = random.choice(['P','N','B','R'])
-                    self.enemy_army[kind] = self.enemy_army.get(kind,0) + 1
-                # Reset ticks to stage-defined values
-                self.player_ticks = sd.get("player_ticks", 12)
-                self.enemy_ticks = sd.get("enemy_ticks", 12)
-                # Re-place armies for new board
+                self.route_choice = "steady"
+                self.active_route = "steady"
+                self.shop_ticks_bonus = 0
+                upcoming = prepare_encounter(CONTENT["stages"][self.stage_index])
+                self.board_w, self.board_h = upcoming["board"]
+                self.enemy_army = dict(upcoming["enemy_army"])
+                self.player_ticks = upcoming["player_ticks"]
+                self.enemy_ticks = upcoming["enemy_ticks"]
                 self.place_armies_initial_layout()
-                self.selection=None; self.legal_moves=[]
+                self.frozen_coords.clear()
+                self.selection = None
+                self.legal_moves = []
                 self.phase = "inter"
                 self.state = "shop"
                 self.build_shop_buttons()
         else:
-            self.meta["stats"]["runs"]+=1
+            self.meta["stats"]["runs"] += 1
             save_meta(self.meta)
-            self.state="meta"
-    
+            self.state = "meta"
+
     def apply_freeze_random_enemy(self):
         coords=[]
         for x in range(self.board_w):
@@ -451,11 +465,15 @@ class App:
             if not self.convert_piece_dialog():
                 return
         elif t == 'tick':
+            self.shop_ticks_bonus += item['amount']
             self.player_ticks += item['amount']
         elif t == 'tick_enemy':
-            self.enemy_tick_factor = max(0.5, self.enemy_tick_factor + item['amount'])
+            # Positive burn factor makes the enemy run OUT of ticks faster.
+            # Item amount is described as '-10% enemy ticks', i.e. easier.
+            self.enemy_tick_factor = min(2.0, self.enemy_tick_factor - item['amount'])
         elif t == 'economy' and item.get('effect') == 'double':
-            self.gold *= 2
+            # Avoid exponential free money across five shops.
+            self.gold += min(self.gold, 36)
         elif t == 'consumable':
             if item['effect'] == 'freeze_random':
                 self.freeze_random_next = True
@@ -482,10 +500,23 @@ class App:
         self.message = f"Achat : {item['name']}"
 
     def shop_continue_next(self):
-        # proceed to next manche
+        # Commit the player's route AFTER shopping: keep acquired pieces and
+        # ticks. Rebuilding earlier would silently undo bought units/bonuses.
+        encounter = prepare_encounter(
+            CONTENT["stages"][self.stage_index], self.route_choice)
+        self.player_army = self.count_army(self.player_color)
+        self.enemy_army = dict(encounter["enemy_army"])
+        self.player_ticks = encounter["player_ticks"] + self.shop_ticks_bonus
+        self.enemy_ticks = encounter["enemy_ticks"]
+        self.active_route = self.route_choice
+        self.place_armies_initial_layout()
+        self.frozen_coords.clear()
+        self.selection = None
+        self.legal_moves = []
+        self.shop_ticks_bonus = 0
         self.phase = "manche"
         self.start_stage()
-        self.state="play"
+        self.state = "play"
     
     def convert_piece_dialog(self):
         """Change a real board piece, not only the future army counter."""
@@ -625,9 +656,14 @@ class App:
         self.screen.blit(self.assets.icons["tick"], (panel.x+16, 60))
         draw_text(self.screen, f"Vos ticks : {int(self.player_ticks)}", (panel.x+54, 62), 22)
         draw_text(self.screen, f"Ticks ennemi : {int(self.enemy_ticks)}", (panel.x+54, 90), 22, (180,200,220))
-        draw_text(self.screen, f"Manche : {self.stage_index+1}", (panel.x+16, 126), 24)
-        if self.double_start or self.double_start_always:
-            draw_text(self.screen, f"Double coup initial", (panel.x+16, 158), 20, (255,230,130))
+        draw_text(self.screen, f"Manche {self.stage_index+1}/{len(CONTENT['stages'])}",
+                  (panel.x+16, 122), 22)
+        draw_text(self.screen, CONTENT["stages"][self.stage_index]["name"],
+                  (panel.x+16, 152), 18)
+        draw_text(self.screen, f"Voie : {ROUTES[self.active_route]['label']}",
+                  (panel.x+16, 175), 16)
+        if self.pre_moves_left:
+            draw_text(self.screen, "Double coup actif", (panel.x+16, 190), 16)
         if self.message:
             draw_text(self.screen, self.message, (panel.x+16, H-48), 20, (220,220,255))
         # buttons
@@ -647,12 +683,22 @@ class App:
             )
             button.draw(self.screen)
         self.shop_continue.draw(self.screen)
+        draw_text(self.screen, f"Prochain combat : {CONTENT['stages'][self.stage_index]['name']}",
+                  (60, 404), 20)
+        for code, btn in zip(ROUTES, self.shop_route_btns):
+            planned = prepare_encounter(CONTENT["stages"][self.stage_index], code)
+            name = ROUTES[code]["label"]
+            selected = "●" if self.route_choice == code else "○"
+            btn.text = (f"{selected} {name}: {planned['player_ticks']} ticks, "
+                        f"ennemi {planned['enemy_ticks']}, gain {planned['reward_gold']} or")
+            btn.draw(self.screen)
         if self.message:
             draw_text(self.screen, self.message, (60, self.screen.get_height() - 55), 20)
     
     def draw_meta(self):
         self.screen.fill((20,22,28))
-        draw_text(self.screen, "Fin de run — Progression méta", (60,60), 28)
+        status = "VICTOIRE DE LA CAMPAGNE" if self.manches_won >= len(CONTENT["stages"]) else "Fin de run — Progression méta"
+        draw_text(self.screen, status, (60,60), 28)
         draw_text(self.screen, f"Amazon débloquée : {'Oui' if self.meta['amazon_unlocked'] else 'Non'}", (60, 100), 22)
         # back to menu button
         self.meta_btn = Button(pygame.Rect(60, 150, 300, 48), "Retour menu", self.back_to_menu)
@@ -754,6 +800,7 @@ class App:
                                     self.state="play"
                     elif self.state=="shop":
                         for b in self.shop_btns: b.handle_event(ev)
+                        for b in self.shop_route_btns: b.handle_event(ev)
                         self.shop_continue.handle_event(ev)
                     elif self.state=="promotion":
                         for b in getattr(self,'promo_btns',[]): b.handle_event(ev)
