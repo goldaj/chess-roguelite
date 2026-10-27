@@ -42,3 +42,18 @@ Sauvegardes meta écrites atomiquement (tempfile + os.replace), test de maintien
 **Validation** : GitHub Actions du commit 563ce2b7033451353976b4d5cd70ce3a3404bb05: 10 tests réussis le 24 octobre 2026, y compris les appels des méthodes réelles de boutique testées sans affichage. Pas de test utilisateur graphique.
 
 **Handoff Codex** : lire les changements sur `chatgpt/review-20261024`, poursuivre les éléments non terminés, puis choisir sélectivement les commits utiles. Aucun merge sur la branche principale.
+
+
+## 2026-10-27 — Demande d'avancement fonctionnel réel sur un autre dépôt
+
+**Utilisateur (verbatim accessible, heure précise inconnue)** :
+
+> Ok. Un autre projet sur lequel tu peux intervenir pour faire avancer le projet ? Non bullshit, de l'avancement réel.
+> Il y a genre 40 repo, et j'ai l'impression qu'on modifie toujours les mêmes.
+> Je veux que ça apporte une grosse valeur fonctionnel au projet choisi, pour le projeti
+
+**Assistant (résumé non verbatim)** : a inspecté des dépôts variés (jeux, Android, utilitaire de ROI, toolkit d'écriture, etc.) et retenu `chess-roguelite` plutôt que les dépôts déjà sollicités. Audit de [PR #1](https://github.com/goldaj/chess-roguelite/pull/1) avant de coder : la prise en passant, la promotion, la transformation et la sauvegarde y sont déjà corrigées. Pour ne pas réintroduire ces problèmes, nouvelle branche indépendante `research/gpt6-tactical-ai-after-review-20261027` et [PR #2](https://github.com/goldaj/chess-roguelite/pull/2) **brouillon, empilée sur PR #1**.
+
+**Travail de gameplay livré** : IA tactique à trois difficultés, anticipation des réponses avec limite de noeuds, choix utilisateur depuis le menu Options et persistance de la difficulté ; correction des effets de gel (pièces gelées interdites un tour, possibilité pour les autres pièces de jouer). Un test démontre une prise de pion piégé par l'ancienne politique gourmande, évitée avec l'IA Normal. Suites de tests unitaires et smoke Pygame sous SDL dummy sur GitHub Actions, sans toucher aux données du joueur. Détails et limites : `docs/TACTICAL_AI_DELIVERY.md`.
+
+**Limites explicites** : aucun test visuel humain ou partie complète, pas de garantie de performance sur grosses armées, pas de modification de règles de pat/checkmate, pas de nouvelle publication en production. Les anciens échanges non récupérés restent des résumés partiels, pas des transcriptions imaginaires.
