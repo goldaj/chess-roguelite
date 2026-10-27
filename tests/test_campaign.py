@@ -95,8 +95,10 @@ class CampaignBalanceTests(unittest.TestCase):
                 offers = draft_shop_offers(pool, gold, rng=random.Random(seed))
                 self.assertEqual(len(offers), 3)
                 self.assertEqual(len(set(o["id"] for o in offers)), 3)
+                affordable_count = sum(o["cost"] <= gold for o in pool)
                 self.assertGreaterEqual(
-                    sum(o["cost"] <= gold for o in offers), 2)
+                    sum(o["cost"] <= gold for o in offers),
+                    min(2, affordable_count))
         with self.assertRaises(ValueError):
             draft_shop_offers(pool, 0, rng=random.Random(12))
 
@@ -118,7 +120,11 @@ class CampaignBalanceTests(unittest.TestCase):
         b = make_board(8, 8, {"K": 1, "R": 1, "P": 3},
                        STAGES[0]["enemy_start"], "w")
         self.assertTrue(capture_progress(b, "b", STAGES[0], "steady")["met"])
-        self.assertFalse(capture_progress(b, "b", STAGES[0], "risk")["met"])
+        risk_enemy = prepare_encounter(STAGES[0], "risk")["enemy_army"]
+        risk_board = make_board(8, 8, {"K": 1, "R": 1, "P": 3},
+                                risk_enemy, "w")
+        self.assertFalse(capture_progress(
+            risk_board, "b", STAGES[0], "risk")["met"])
 
     def test_invalid_campaign_variants_rejected_before_loading(self):
         a = copy.deepcopy(STAGES)
