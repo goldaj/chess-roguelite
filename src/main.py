@@ -5,6 +5,9 @@ from pygame.locals import *
 try:
     from .core.board import Board, Piece
     from .core.ai import choose_move
+    from .core.campaign import (ROUTES, prepare_encounter, victory_reward,
+                                validate_campaign, draft_shop_offers)
+    from .core.formation import make_board
     from .ui.assets_loader import Assets
     from .ui.buttons import Button
     from .meta.save import load_meta, save_meta
@@ -12,6 +15,9 @@ except ImportError:
     sys.path.append(os.path.dirname(__file__))
     from core.board import Board, Piece
     from core.ai import choose_move
+    from core.campaign import (ROUTES, prepare_encounter, victory_reward,
+                               validate_campaign, draft_shop_offers)
+    from core.formation import make_board
     from ui.assets_loader import Assets
     from ui.buttons import Button
     from meta.save import load_meta, save_meta
@@ -31,6 +37,8 @@ for _p in CONTENT_PATHS:
         break
 if CONTENT is None:
     raise FileNotFoundError(f"shop_items.json introuvable aux chemins: {CONTENT_PATHS}")
+
+validate_campaign(CONTENT["stages"])
 
 PIECE_VALUES = CONTENT["piece_values"]
 TICK_COSTS = CONTENT["tick_costs"]
@@ -95,6 +103,8 @@ class App:
         self.phase = "manche"
         self.btns_play = []
         self.stage_index=0
+        self.active_route = "steady"
+        self.route_choice = "steady"
         self.shop_stage_index = None
         self.purchased_offers = set()
         self.manches_won = 0
@@ -109,12 +119,12 @@ class App:
         self.enemy_tick_factor=1.0
         self.player_color = 'w' if random.random() < (0.5 + self.bias_white - self.bias_black) else 'b'
         self.enemy_color = 'b' if self.player_color=='w' else 'w'
-        sd = CONTENT["stages"][0]
+        sd = prepare_encounter(CONTENT["stages"][0], "steady")
         self.board_w,self.board_h = sd["board"]
-        self.player_ticks = 100 + self.meta["permanent"]["start_ticks_bonus"]
-        self.enemy_ticks = 100
+        self.player_ticks = sd["player_ticks"] + self.meta["permanent"]["start_ticks_bonus"]
+        self.enemy_ticks = sd["enemy_ticks"]
         self.player_army = dict(self.meta["starting_deck"])
-        self.enemy_army = dict(sd["enemy_start"])
+        self.enemy_army = dict(sd["enemy_army"])
         self.selection=None; self.legal_moves=[]
         self.place_armies_initial_layout()
         self.frozen_coords=set()
@@ -125,72 +135,10 @@ class App:
     
     
     def place_armies_initial_layout(self):
-        # Player pieces always at bottom; enemy at top. Colors preserved.
-        self.board = Board(self.board_w, self.board_h)
-        self.board.bottom_color = self.player_color
-
-        def center_cols(count, width):
-            if count >= width: return list(range(width))
-            mid = width // 2
-            cols=[mid]; L=mid-1; R=mid+1
-            while len(cols)<count and (L>=0 or R<width):
-                if L>=0: cols.append(L); L-=1
-                if len(cols)>=count: break
-                if R<width: cols.append(R); R+=1
-            cols.sort(); return cols[:count]
-
-        def place_bottom(army, color):
-            pawn_row = self.board_h - 2
-            back_row = self.board_h - 1
-            cols3 = center_cols(3, self.board_w)
-            p_count = min(army.get('P',0), len(cols3))
-            for i in range(p_count):
-                self.board.set(cols3[i], pawn_row, Piece('P', color))
-            back_kinds = ['R','K','N'][:len(cols3)]
-            for kind, fx in zip(back_kinds, cols3):
-                if army.get(kind,0)>0:
-                    self.board.set(fx, back_row, Piece(kind, color))
-            for kind in ('B','Q','A','R','N','P'):
-                base_count = 1 if kind in ('R','K','N') else 0
-                base_p = p_count if kind=='P' else 0
-                extra = max(0, army.get(kind,0) - base_count - base_p)
-                for _ in range(extra):
-                    placed=False
-                    for y in [back_row, pawn_row]:
-                        for x in range(self.board_w):
-                            if self.board.get(x,y) is None:
-                                self.board.set(x,y, Piece(kind, color)); placed=True; break
-                        if placed: break
-
-        def place_top(army, color):
-            pawn_row = 1
-            back_row = 0
-            cols3 = center_cols(3, self.board_w)
-            p_count = min(army.get('P',0), len(cols3))
-            for i in range(p_count):
-                self.board.set(cols3[i], pawn_row, Piece('P', color))
-            back_kinds = ['R','K','N'][:len(cols3)]
-            for kind, fx in zip(back_kinds, cols3):
-                if army.get(kind,0)>0:
-                    self.board.set(fx, back_row, Piece(kind, color))
-            for kind in ('B','Q','A','R','N','P'):
-                base_count = 1 if kind in ('R','K','N') else 0
-                base_p = p_count if kind=='P' else 0
-                extra = max(0, army.get(kind,0) - base_count - base_p)
-                for _ in range(extra):
-                    placed=False
-                    for y in [back_row, pawn_row]:
-                        for x in range(self.board_w):
-                            if self.board.get(x,y) is None:
-                                self.board.set(x,y, Piece(kind, color)); placed=True; break
-                        if placed: break
-
-        if self.player_color == 'w':
-            place_bottom(self.player_army, 'w')
-            place_top(self.enemy_army, 'b')
-        else:
-            place_bottom(self.player_army, 'b')
-            place_top(self.enemy_army, 'w')
+        """Prepare all owned pieces on their home rows, without losing any."""
+        self.board = make_board(self.board_w, self.board_h,
+                                self.player_army, self.enemy_army,
+                                self.player_color)
 
     def build_menu_buttons(self):
         self.buttons = []
