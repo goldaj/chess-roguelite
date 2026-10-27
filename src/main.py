@@ -6,7 +6,8 @@ try:
     from .core.board import Board, Piece
     from .core.ai import choose_move
     from .core.campaign import (ROUTES, prepare_encounter, victory_reward,
-                                validate_campaign, draft_shop_offers)
+                                validate_campaign, draft_shop_offers,
+                                record_stage_result)
     from .core.formation import make_board
     from .ui.assets_loader import Assets
     from .ui.buttons import Button
@@ -16,7 +17,8 @@ except ImportError:
     from core.board import Board, Piece
     from core.ai import choose_move
     from core.campaign import (ROUTES, prepare_encounter, victory_reward,
-                               validate_campaign, draft_shop_offers)
+                               validate_campaign, draft_shop_offers,
+                               record_stage_result)
     from core.formation import make_board
     from ui.assets_loader import Assets
     from ui.buttons import Button
@@ -299,6 +301,16 @@ class App:
         self.build_ingame_buttons()
     
     def end_stage(self, win: bool):
+        surviving_army = self.count_army(self.player_color)
+        material_values = {"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "A": 12}
+        record_stage_result(
+            self.meta, stage=self.stage_index + 1, route=self.active_route,
+            ai_difficulty=self.ai_difficulty, won=win,
+            remaining_player_ticks=self.player_ticks,
+            remaining_enemy_ticks=self.enemy_ticks,
+            player_material=sum(material_values.get(k, 0) * n
+                                for k, n in surviving_army.items()))
+        save_meta(self.meta)  # keep completed battles even when user exits early
         if win:
             # Earning rewards is a consequence of the chosen route, not a
             # random extra roll hidden from the player.
