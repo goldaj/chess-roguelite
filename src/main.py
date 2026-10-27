@@ -296,6 +296,11 @@ class App:
         self.pre_moves_left = 2 if (self.double_start or self.double_start_always) else 0
         # 'next stage' must be consumed once; permanent buff remains separate.
         self.double_start = False
+        if self.active_route == "safe":
+            # A genuine defensive option: freeze the highest-value non-king
+            # threat for its first move, not merely extra ticks that may
+            # otherwise be irrelevant before the enemy clock expires.
+            self.apply_freeze_strongest_enemy()
         if self.freeze_random_next:
             self.apply_freeze_random_enemy(); self.freeze_random_next=False
         self.build_ingame_buttons()
@@ -351,6 +356,18 @@ class App:
             self.meta["stats"]["runs"] += 1
             save_meta(self.meta)
             self.state = "meta"
+
+    def apply_freeze_strongest_enemy(self):
+        """One defensive freeze on the highest-value enemy piece, for one turn."""
+        candidates = []
+        for x in range(self.board_w):
+            for y in range(self.board_h):
+                piece = self.board.get(x, y)
+                if piece and piece.color == self.enemy_color and piece.kind != "K":
+                    candidates.append((self.piece_value(piece.kind), x, y))
+        if candidates:
+            _, x, y = max(candidates)
+            self.frozen_coords.add((x, y))
 
     def apply_freeze_random_enemy(self):
         coords=[]
