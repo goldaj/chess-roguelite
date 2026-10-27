@@ -28,6 +28,7 @@ jobs:
         run: |
           PYTHONPATH=. python tools/autoplay_balance.py > "$RUNNER_TEMP/sparring.json"
           python -c 'import json,sys; r=json.load(open(sys.argv[1],encoding="utf-8")); assert r["games"]==36; assert all(item["moves_played"]>=0 for item in r["results"])' "$RUNNER_TEMP/sparring.json"
+          python -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); [print("%s / %s / %s: %s (%d moves)" % (x["name"], x["route"], x["player_color"], x["outcome"], x["moves_played"])) for x in d["results"]]' "$RUNNER_TEMP/sparring.json"
   campaign-pygame:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
