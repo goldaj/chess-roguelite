@@ -22,5 +22,21 @@ jobs:
         run: python -m compileall -q src tests
       - name: Headless chess, shop and tactical AI tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
-      # Unit tests exercise real board/AI logic, without pretending a Pygame
-      # window has been opened or a complete run played by a human.
+      # Unit tests exercise real board/AI logic without graphical dependencies.
+
+  pygame-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install game dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Actual Pygame UI + opponent move (headless SDL)
+        run: python tests/smoke_pygame.py
