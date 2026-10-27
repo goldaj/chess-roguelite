@@ -155,3 +155,36 @@ def draft_shop_offers(pool: list[dict], gold: int, *, rng=None) -> list[dict]:
     first = rng.choice(valuable or affordable)
     remaining = [item for item in pool if item["id"] != first["id"]]
     return [first, *rng.sample(remaining, 2)]
+
+
+def record_stage_result(meta: dict, *, stage: int, route: str,
+                        ai_difficulty: str, won: bool,
+                        remaining_player_ticks: float, remaining_enemy_ticks: float,
+                        player_material: int) -> None:
+    """Bounded LOCAL anonymous play record, enabling actual balance analysis.
+
+    Counts *completed* fights only. Quits, user skill and changed AI settings
+    must be accounted for separately before inferring difficulty.
+    """
+    if not isinstance(meta, dict) or type(stage) is not int or stage < 1:
+        raise ValueError("invalid balance record")
+    if route not in ROUTES or ai_difficulty not in ("easy", "normal", "hard"):
+        raise ValueError("invalid route/difficulty")
+    if type(won) is not bool:
+        raise ValueError("invalid result")
+    for value in (remaining_player_ticks, remaining_enemy_ticks):
+        if type(value) not in (float, int) or not -1000 <= value < 100000:
+            raise ValueError("invalid remaining ticks")
+    if type(player_material) is not int or player_material < 0:
+        raise ValueError("invalid remaining material")
+    records = meta.setdefault("campaign_balance_history", [])
+    if not isinstance(records, list):
+        raise ValueError("invalid existing history")
+    records.append({
+        "stage": stage, "route": route, "ai_difficulty": ai_difficulty,
+        "result": "victory" if won else "defeat",
+        "player_ticks_left": float(remaining_player_ticks),
+        "enemy_ticks_left": float(remaining_enemy_ticks),
+        "player_material_left": player_material,
+    })
+    del records[:-200]  # capped save, not an endless telemetry stream
