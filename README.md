@@ -1,3 +1,9 @@
+## Campagne à objectifs jouable et rééquilibrage expérimental (PR #3, 27/10/2026)
+
+[PR #3](https://github.com/goldaj/chess-roguelite/pull/3) **brouillon empilée** sur [PR #2](https://github.com/goldaj/chess-roguelite/pull/2) : six adversaires distincts, mission de prises affichée pour gagner sur le temps, trois voies Équilibrée/Prudente/Audacieuse entre les manches, récompenses et budgets explicites, meilleure boutique et conservation de toutes les pièces achetées. La voie prudente gèle la pièce ennemie la plus forte pour son premier tour ; la voie audacieuse renforce l'ennemi et l'objectif contre plus d'or.
+
+Un audit a identifié les victoires passives aux ticks et plusieurs achats à effet inversé. Ils sont corrigés sur la branche expérimentale, sans prétendre que **le jeu est déjà correctement équilibré en production**. Les vrais combats terminés alimentent des statistiques **locales**, analysables volontairement hors ligne. Voir [docs/BRANCHING_CAMPAIGN_BALANCE.md](docs/BRANCHING_CAMPAIGN_BALANCE.md) et les tests CI. Ne pas fusionner PR #3 avant PR #2 et PR #1.
+
 ## Nouveauté du prototype sur PR #2 : adversaire tactique (27/10/2026)
 
 La [PR #2](https://github.com/goldaj/chess-roguelite/pull/2) ajoute **trois difficultés d'IA accessibles dans Options** : Facile (capture immédiate), Normal (anticipe la réponse) et Difficile (anticipe deux réponses, recherche bornée). Le niveau est conservé dans la sauvegarde méta, avec compatibilité des anciennes sauvegardes.
