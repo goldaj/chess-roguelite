@@ -9,9 +9,10 @@ from pathlib import Path
 
 from src.core.campaign import (
     ROUTES, draft_shop_offers, prepare_encounter,
-    record_stage_result, victory_reward,
+    record_stage_result, victory_reward, capture_progress,
 )
 from src.core.formation import make_board
+from src.core.ai import choose_move
 from src.core.board import Piece
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +27,7 @@ def real_app_methods():
     names = {
         "end_stage", "shop_continue_next", "place_armies_initial_layout",
         "count_army", "start_stage", "select_route", "purchase",
-        "buy_piece_dialog",
+        "buy_piece_dialog", "do_enemy_turn", "do_player_move",
     }
     selected = [m for m in klass.body
                 if isinstance(m, ast.FunctionDef) and m.name in names]
@@ -38,6 +39,7 @@ def real_app_methods():
         "ROUTES": ROUTES, "draft_shop_offers": draft_shop_offers,
         "prepare_encounter": prepare_encounter, "victory_reward": victory_reward,
         "record_stage_result": record_stage_result, "math": math,
+        "capture_progress": capture_progress, "choose_move": choose_move,
         "save_meta": lambda meta: saved.append(copy.deepcopy(meta)),
     }
     exec(compile(ast.Module(body=selected, type_ignores=[]), str(MAIN), "exec"), env)
@@ -77,6 +79,9 @@ def host():
     game.turn = "w"
     game.state = "play"
     game.phase = "manche"
+    game.animate_move = lambda *args: None
+    game.cost_for_piece = lambda kind: 1
+    game.piece_value = lambda kind: {"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9}.get(kind, 0)
     game.recompute_tile = lambda: None
     game.build_shop_buttons = lambda: None
     game.build_ingame_buttons = lambda: None
@@ -157,6 +162,43 @@ class CampaignAppTests(unittest.TestCase):
         self.assertTrue(app.meta["amazon_unlocked"])
         self.assertEqual(app.meta["stats"]["wins"], 1)
         self.assertEqual(app.meta["stats"]["runs"], 1)
+
+    def test_enemy_timeout_requires_progress_instead_of_passive_win(self):
+        app, _ = host()
+        app.stage_index = 1
+        app.enemy_army = dict(CONTENT["stages"][1]["enemy_start"])
+        app.place_armies_initial_layout()
+        app.enemy_ticks = 1
+        app.turn = "b"
+        app.do_enemy_turn()
+        self.assertEqual(app.state, "meta")
+        self.assertEqual(app.meta["campaign_balance_history"][-1]["result"], "defeat")
+        self.assertIn("Mission ratée", app.message)
+
+    def test_initial_survival_mission_can_win_on_enemy_timeout(self):
+        app, _ = host()
+        app.enemy_ticks = 1
+        app.turn = "b"
+        app.do_enemy_turn()
+        self.assertEqual(app.stage_index, 1)
+        self.assertEqual(app.state, "shop")
+        self.assertEqual(app.meta["campaign_balance_history"][-1]["result"], "victory")
+
+    def test_capture_king_has_priority_over_last_player_tick(self):
+        app, _ = host()
+        app.board = make_board(8, 8, {"K": 1, "Q": 1}, {"K": 1}, "w")
+        # Move actual queen to a legal capture square for a decisive last move.
+        queen_spots = [(x, y) for x in range(8) for y in range(8)
+                       if (p := app.board.get(x, y)) and p.kind == "Q"]
+        x, y = queen_spots[0]
+        app.board.set(x, y, None)
+        app.board.set(4, 1, Piece("Q", "w"))
+        app.board.set(4, 0, Piece("K", "b"))
+        self.assertIn((4, 0), app.board.legal_moves_for(4, 1))
+        app.player_ticks = 1
+        app.do_player_move(4, 1, 4, 0)
+        self.assertEqual(app.state, "shop")
+        self.assertEqual(app.meta["campaign_balance_history"][-1]["result"], "victory")
 
     def test_play_history_is_bounded_and_keeps_only_local_metrics(self):
         meta = {}
