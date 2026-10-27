@@ -49,6 +49,7 @@ def host():
     Klass, saves = real_app_methods()
     game = Klass()
     game.stage_index = 0
+    game.manches_won = 0
     game.player_color, game.enemy_color = "w", "b"
     game.player_army = {"K": 1, "R": 1, "B": 1, "P": 3}
     game.enemy_army = {"K": 1, "P": 3}
