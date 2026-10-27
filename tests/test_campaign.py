@@ -95,7 +95,8 @@ class CampaignBalanceTests(unittest.TestCase):
                 offers = draft_shop_offers(pool, gold, rng=random.Random(seed))
                 self.assertEqual(len(offers), 3)
                 self.assertEqual(len(set(o["id"] for o in offers)), 3)
-                self.assertTrue(any(o["cost"] <= gold for o in offers))
+                self.assertGreaterEqual(
+                    sum(o["cost"] <= gold for o in offers), 2)
         with self.assertRaises(ValueError):
             draft_shop_offers(pool, 0, rng=random.Random(12))
 
