@@ -125,3 +125,33 @@ def campaign_balance_report(stages: list[dict]) -> list[dict]:
         })
         previous = material
     return result
+
+
+def draft_shop_offers(pool: list[dict], gold: int, *, rng=None) -> list[dict]:
+    """Draft three distinct offers, guaranteeing an affordable option.
+
+    This fixes a common shop dead-end in the previous random three-offer draw.
+    Affordability is not *usability*: an option needing a free square must still
+    validate it at purchase, and gold can be spent before another purchase.
+    """
+    import random
+
+    rng = rng or random
+    _require_int(gold, "gold", 0)
+    if not isinstance(pool, list) or len(pool) < 3:
+        raise ValueError("shop requires at least three choices")
+    ids = [item.get("id") for item in pool]
+    if len(set(ids)) != len(ids):
+        raise ValueError("duplicate shop offer IDs")
+    for item in pool:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise ValueError("invalid shop offer")
+        _require_int(item.get("cost"), "shop cost", 0)
+    affordable = [item for item in pool if item["cost"] <= gold]
+    if not affordable:
+        raise ValueError("campaign shop must contain an affordable option")
+    valuable = [item for item in affordable
+                if item.get("type") in ("tick", "buy_piece", "convert", "start_power")]
+    first = rng.choice(valuable or affordable)
+    remaining = [item for item in pool if item["id"] != first["id"]]
+    return [first, *rng.sample(remaining, 2)]
