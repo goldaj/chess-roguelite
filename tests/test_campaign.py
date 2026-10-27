@@ -8,7 +8,7 @@ from pathlib import Path
 
 from src.core.campaign import (
     ROUTES, campaign_balance_report, draft_shop_offers,
-    prepare_encounter, validate_campaign, victory_reward,
+    prepare_encounter, validate_campaign, victory_reward, capture_progress,
 )
 from src.core.formation import make_board
 
@@ -98,6 +98,26 @@ class CampaignBalanceTests(unittest.TestCase):
                 self.assertTrue(any(o["cost"] <= gold for o in offers))
         with self.assertRaises(ValueError):
             draft_shop_offers(pool, 0, rng=random.Random(12))
+
+    def test_timeout_capture_goal_requires_actual_enemy_losses(self):
+        stage = STAGES[1]
+        b = make_board(8, 8, {"K": 1, "R": 1, "P": 3},
+                       stage["enemy_start"], "w")
+        initial = capture_progress(b, "b", stage, "steady")
+        self.assertEqual(initial, {"captured": 0, "required": 2, "met": False})
+        pawns = [(x, y) for x in range(8) for y in range(8)
+                 if (p := b.get(x, y)) and p.color == "b" and p.kind == "P"]
+        for x, y in pawns[:2]:
+            b.set(x, y, None)
+        score = capture_progress(b, "b", stage, "steady")
+        self.assertEqual(score, {"captured": 2, "required": 2, "met": True})
+        self.assertEqual(capture_progress(b, "b", stage, "risk")["required"], 4)
+
+    def test_first_stage_survival_is_not_the_same_as_risky_capture_goal(self):
+        b = make_board(8, 8, {"K": 1, "R": 1, "P": 3},
+                       STAGES[0]["enemy_start"], "w")
+        self.assertTrue(capture_progress(b, "b", STAGES[0], "steady")["met"])
+        self.assertFalse(capture_progress(b, "b", STAGES[0], "risk")["met"])
 
     def test_invalid_campaign_variants_rejected_before_loading(self):
         a = copy.deepcopy(STAGES)
