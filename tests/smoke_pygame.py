@@ -43,7 +43,22 @@ def run():
         assert app.turn == app.player_color
         assert app.enemy_ticks < before
         assert app.board.locate_king(app.enemy_color)
-        print("pygame-smoke: menu/options/persisted difficulty/play/one enemy move OK")
+        # Force the transition to exercise the actual Pygame shop and route UI.
+        # This is a UI smoke, NOT proof a human won a battle.
+        app.end_stage(True)
+        assert app.state == "shop"
+        assert app.stage_index == 1
+        assert len(app.shop_route_btns) == 3
+        app.draw_shop()
+        app.select_route("risk")
+        app.shop_continue_next()
+        assert app.state == "play"
+        assert app.active_route == "risk"
+        assert app.enemy_army["N"] == 2  # stage 2 knight + risk reinforcement
+        assert app.enemy_ticks == 21  # stage 2 (18) + risk (3)
+        assert app.turn == "w"
+        app.draw_play()
+        print("pygame-smoke: menu/options/persisted difficulty/real move/shop/risk branch OK")
         pygame.quit()
 
 
