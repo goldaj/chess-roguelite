@@ -57,6 +57,11 @@ def validate_campaign(stages: list[dict]) -> None:
         _require_int(stage.get("player_ticks"), "player_ticks", 1)
         _require_int(stage.get("enemy_ticks"), "enemy_ticks", 1)
         _require_int(stage.get("reward_gold"), "reward_gold", 5)
+        goal = _require_int(stage.get("goal_captured_material"),
+                            "goal_captured_material", 0)
+        available = sum(PIECE_MATERIAL.get(k, 0) * n for k, n in army.items())
+        if goal > available:
+            raise ValueError("capture objective exceeds opponent material")
         if stage["reward_gold"] < 4:
             raise ValueError("reward must pay for safe route")
 
@@ -82,6 +87,8 @@ def prepare_encounter(stage: dict, route: str = "steady") -> dict:
         "reward_gold": stage["reward_gold"] + p["gold"],
         "route": route,
         "route_name": p["label"],
+        "goal_captured_material": stage["goal_captured_material"] + (
+            2 if route == "risk" else 0),
     }
 
 
@@ -121,6 +128,7 @@ def campaign_balance_report(stages: list[dict]) -> list[dict]:
             "enemy_ticks": ro["enemy_ticks"],
             "time_margin_ticks": ro["player_ticks"] - ro["enemy_ticks"],
             "reward_gold": ro["reward_gold"],
+            "goal_captured_material": ro["goal_captured_material"],
             "material_delta_vs_previous": None if previous is None else material - previous,
         })
         previous = material
@@ -188,3 +196,28 @@ def record_stage_result(meta: dict, *, stage: int, route: str,
         "player_material_left": player_material,
     })
     del records[:-200]  # capped save, not an endless telemetry stream
+
+
+
+def capture_progress(board, enemy_color: str, stage: dict, route: str) -> dict:
+    """Objective measured from truly removed enemy pieces, not starting strength.
+
+    The previous rules let the player win just by waiting for the enemy timer
+    (34/36 wins by timeout in a simple bot probe). A timeout can now complete
+    an explicitly displayed capture mission, rather than granting a passive
+    victory regardless of progress. Capturing the king wins separately.
+    """
+    if enemy_color not in ("w", "b"):
+        raise ValueError("invalid color")
+    encounter = prepare_encounter(stage, route)
+    initial = sum(PIECE_MATERIAL.get(k, 0) * n
+                  for k, n in encounter["enemy_army"].items())
+    remaining = 0
+    for x in range(board.w):
+        for y in range(board.h):
+            p = board.get(x, y)
+            if p and p.color == enemy_color:
+                remaining += PIECE_MATERIAL.get(p.kind, 0)
+    gained = max(0, initial - remaining)
+    needed = encounter["goal_captured_material"]
+    return {"captured": gained, "required": needed, "met": gained >= needed}
