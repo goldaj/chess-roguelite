@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from src.core.ai import choose_move
-from src.core.campaign import prepare_encounter
+from src.core.campaign import prepare_encounter, capture_progress
 from src.core.formation import make_board
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,19 +47,22 @@ def play_reference_game(stage: dict, route: str, player_color: str) -> dict:
             number_of_moves += 1
             if turn == player_color:
                 player_ticks -= 1
-                if player_ticks <= 0:
-                    outcome = "player_out_of_ticks"
-                    break
                 if b.locate_king(enemy_color) is None:
                     outcome = "player_captured_king"
                     break
+                if player_ticks <= 0:
+                    outcome = "player_out_of_ticks"
+                    break
             else:
                 enemy_ticks -= 1
-                if enemy_ticks <= 0:
-                    outcome = "enemy_out_of_ticks"
-                    break
                 if b.locate_king(player_color) is None:
                     outcome = "enemy_captured_king"
+                    break
+                if enemy_ticks <= 0:
+                    if capture_progress(b, enemy_color, stage, route)["met"]:
+                        outcome = "mission_completed_on_timeout"
+                    else:
+                        outcome = "mission_failed_on_timeout"
                     break
         turn = "b" if turn == "w" else "w"
     return {
@@ -67,7 +70,9 @@ def play_reference_game(stage: dict, route: str, player_color: str) -> dict:
         "opponents": "easy_vs_easy_FIXED_DECK_NO_SHOP",
         "outcome": outcome, "moves_played": number_of_moves,
         "player_ticks_left": player_ticks, "enemy_ticks_left": enemy_ticks,
-        "player_won": outcome in ("player_captured_king", "enemy_out_of_ticks"),
+        "player_won": outcome in ("player_captured_king",
+                                  "mission_completed_on_timeout"),
+        "capture_goal": capture_progress(b, enemy_color, stage, route),
     }
 
 
