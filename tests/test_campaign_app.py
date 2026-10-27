@@ -28,6 +28,7 @@ def real_app_methods():
         "end_stage", "shop_continue_next", "place_armies_initial_layout",
         "count_army", "start_stage", "select_route", "purchase",
         "buy_piece_dialog", "do_enemy_turn", "do_player_move",
+        "apply_freeze_strongest_enemy",
     }
     selected = [m for m in klass.body
                 if isinstance(m, ast.FunctionDef) and m.name in names]
@@ -142,6 +143,22 @@ class CampaignAppTests(unittest.TestCase):
         app.end_stage(True)
         app.shop_continue_next()
         self.assertEqual(app.pre_moves_left, 0)
+
+    def test_cautious_branch_freezes_the_biggest_real_threat_for_one_turn(self):
+        app, _ = host()
+        app.end_stage(True)
+        app.select_route("safe")
+        app.shop_continue_next()
+        self.assertEqual(app.active_route, "safe")
+        self.assertEqual(app.enemy_army["N"], 1)
+        self.assertEqual(len(app.frozen_coords), 1)
+        location = next(iter(app.frozen_coords))
+        self.assertEqual(app.board.get(*location).kind, "N")
+        self.assertEqual(app.player_ticks, 28)  # stage2 23 + safe5
+        # The normal enemy move handler consumes the freeze, not permanently.
+        app.turn = "b"
+        app.do_enemy_turn()
+        self.assertFalse(app.frozen_coords)
 
     def test_defeat_is_not_rewarded_and_is_locally_counted(self):
         app, saves = host()
