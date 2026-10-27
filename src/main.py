@@ -710,7 +710,7 @@ class App:
         progress = capture_progress(
             self.board, self.enemy_color,
             CONTENT["stages"][self.stage_index], self.active_route)
-        draw_text(self.screen, f"Objectif : {progress['captured']}/{progress['required']} prises",
+        draw_text(self.screen, f"Objectif : {progress['captured']}/{progress['required']} points",
                   (panel.x+16, 194), 16, (220, 205, 140))
         if self.pre_moves_left:
             draw_text(self.screen, "Double coup actif", (panel.x+16, 216), 16)
@@ -737,7 +737,7 @@ class App:
                   (60, 404), 20)
         for code, btn in zip(ROUTES, self.shop_route_btns):
             planned = prepare_encounter(CONTENT["stages"][self.stage_index], code)
-            name = ROUTES[code]["label"]
+            name = ROUTES[code]["label"] + (" + gel" if code == "safe" else "")
             selected = "●" if self.route_choice == code else "○"
             true_player_ticks = planned["player_ticks"] + self.shop_ticks_bonus
             true_enemy_ticks = max(1, math.ceil(
