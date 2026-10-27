@@ -7,7 +7,7 @@ try:
     from .core.ai import choose_move
     from .core.campaign import (ROUTES, prepare_encounter, victory_reward,
                                 validate_campaign, draft_shop_offers,
-                                record_stage_result)
+                                record_stage_result, capture_progress)
     from .core.formation import make_board
     from .ui.assets_loader import Assets
     from .ui.buttons import Button
@@ -18,7 +18,7 @@ except ImportError:
     from core.ai import choose_move
     from core.campaign import (ROUTES, prepare_encounter, victory_reward,
                                validate_campaign, draft_shop_offers,
-                               record_stage_result)
+                               record_stage_result, capture_progress)
     from core.formation import make_board
     from ui.assets_loader import Assets
     from ui.buttons import Button
@@ -181,7 +181,7 @@ class App:
         sw, sh = self.screen.get_size()
         side_panel = max(360, sw // 4)
         x = sw - side_panel + 20
-        y = 200  # below gold/ticks/manche info
+        y = 244  # below stage, route and capture-goal readouts
         self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Options", self.open_options)); y += 58
         self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Aller au menu (sauver le deck)", self.back_to_menu)); y += 58
         if self.freeze_target_stock > 0:
@@ -422,12 +422,11 @@ class App:
             self.gold += self.piece_value(t.kind)
         cost=self.cost_for_piece(p.kind)
         self.player_ticks -= cost
-        if self.player_ticks <= 0:
-            self.message="Vous manquez de temps !"; self.end_stage(False); return
         ek=self.board.locate_king(self.enemy_color)
-        no_enemy = all((self.board.get(x,y) is None or self.board.get(x,y).color!=self.enemy_color) for x in range(self.board_w) for y in range(self.board_h))
-        if ek is None or no_enemy:
+        if ek is None:
             self.message="Roi ennemi capturé !"; self.end_stage(True); return
+        if self.player_ticks <= 0:
+            self.message="Vos ticks sont épuisés !"; self.end_stage(False); return
         if self.pre_moves_left>0:
             self.pre_moves_left-=1
             if self.pre_moves_left==0: self.turn=self.enemy_color
@@ -450,12 +449,22 @@ class App:
         self.board.move_and_promote(x1,y1,x2,y2)
         cost=1 * self.enemy_tick_factor
         self.enemy_ticks -= cost
-        if self.enemy_ticks <= 0:
-            self.message="L'ennemi manque de temps !"; self.end_stage(True); return
         pk=self.board.locate_king(self.player_color)
-        no_player = all((self.board.get(x,y) is None or self.board.get(x,y).color!=self.player_color) for x in range(self.board_w) for y in range(self.board_h))
-        if pk is None or no_player:
+        if pk is None:
             self.message="Votre roi est capturé..."; self.end_stage(False); return
+        if self.enemy_ticks <= 0:
+            progress = capture_progress(
+                self.board, self.enemy_color, CONTENT["stages"][self.stage_index],
+                self.active_route)
+            if progress["met"]:
+                self.message="Objectif atteint : la bataille est gagnée !"
+                self.end_stage(True)
+            else:
+                self.message=("Mission ratée : " +
+                              f"{progress['captured']}/{progress['required']} "
+                              "points ennemis capturés.")
+                self.end_stage(False)
+            return
         self.turn=self.player_color
     
     # SHOP
@@ -680,9 +689,14 @@ class App:
         draw_text(self.screen, CONTENT["stages"][self.stage_index]["name"],
                   (panel.x+16, 152), 18)
         draw_text(self.screen, f"Voie : {ROUTES[self.active_route]['label']}",
-                  (panel.x+16, 175), 16)
+                  (panel.x+16, 173), 16)
+        progress = capture_progress(
+            self.board, self.enemy_color,
+            CONTENT["stages"][self.stage_index], self.active_route)
+        draw_text(self.screen, f"Objectif : {progress['captured']}/{progress['required']} prises",
+                  (panel.x+16, 194), 16, (220, 205, 140))
         if self.pre_moves_left:
-            draw_text(self.screen, "Double coup actif", (panel.x+16, 190), 16)
+            draw_text(self.screen, "Double coup actif", (panel.x+16, 216), 16)
         if self.message:
             draw_text(self.screen, self.message, (panel.x+16, H-48), 20, (220,220,255))
         # buttons
