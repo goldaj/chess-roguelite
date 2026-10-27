@@ -64,6 +64,9 @@ class App:
         self.tile=96
         self.assets.load(self.tile)
         self.meta = load_meta()
+        # New preference, compatible with saves created before the AI modes.
+        saved_level = self.meta.get('ai_difficulty', 'normal')
+        self.ai_difficulty = saved_level if saved_level in ('easy', 'normal', 'hard') else 'normal'
         self.buttons=[]
         self.state="menu"
         self.phase="menu"
@@ -279,7 +282,16 @@ class App:
         def add(y,text,cb):
             self.opt_btns.append(Button(pygame.Rect(sw//2-220, y, 440, 52), text, cb))
         add(int(sh*0.45), "Basculer plein écran / fenêtré", self.toggle_fullscreen)
-        add(int(sh*0.45)+70, "Retour", self.back_to_prev_from_options)
+        labels = {"easy": "Facile", "normal": "Normal", "hard": "Difficile"}
+        add(int(sh*0.45)+70, f"Adversaire IA : {labels[self.ai_difficulty]}", self.cycle_ai_difficulty)
+        add(int(sh*0.45)+140, "Retour", self.back_to_prev_from_options)
+
+    def cycle_ai_difficulty(self):
+        levels = ("easy", "normal", "hard")
+        self.ai_difficulty = levels[(levels.index(self.ai_difficulty) + 1) % len(levels)]
+        self.meta["ai_difficulty"] = self.ai_difficulty
+        save_meta(self.meta)
+        self.build_options_buttons()
     
     def toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
@@ -447,14 +459,15 @@ class App:
             self.turn=self.enemy_color
     
     def do_enemy_turn(self):
-        move=choose_move(self.board, self.enemy_color)
+        # Frozen pieces are ineligible, not a reason to throw away a legal
+        # move by another piece. Freeze lasts exactly one enemy decision.
+        move=choose_move(self.board, self.enemy_color,
+                         difficulty=self.ai_difficulty, frozen=self.frozen_coords)
+        self.frozen_coords.clear()
         if move is None:
-            # No legal move (pat) -> skip enemy turn (no end-of-manche)
+            # Existing variant rule: an enemy without legal moves passes.
             self.turn=self.player_color; return
         (x1,y1),(x2,y2)=move
-        if (x1,y1) in self.frozen_coords:
-            self.frozen_coords.discard((x1,y1))
-            self.turn=self.player_color; return
         p=self.board.get(x1,y1); t=self.board.get(x2,y2)
         # animate enemy
         self.animate_move(x1,y1,x2,y2)
