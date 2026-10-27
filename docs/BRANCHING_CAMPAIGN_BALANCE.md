@@ -62,7 +62,7 @@ Le choix ne s'applique **qu'à la manche suivante**. Les données d'une manche t
 - « −10 % ticks ennemi » : retire **10 % du budget ennemi du combat suivant**, arrondi vers le haut, au lieu de diminuer sa dépense par coup sur toutes les manches ; plafond cumulé de 35 % si futurs effets multiples.
 - Double coup « prochaine manche » : consommé une fois, contrairement à « chaque manche » permanent pendant la run.
 - Doubler l'or : bénéfice brut limité à +36 avant coût de 18, pour éviter une multiplication illimitée entre boutiques.
-- Offres : au moins une option coûte au plus l'or disponible (sous réserve de son applicabilité métier, par exemple cases disponibles pour une nouvelle pièce) ; les biais de couleur inutiles en cours de run ne sont plus proposés.
+- Offres : **deux options abordables quand le catalogue en contient au moins deux**, sinon la seule disponible, avec une troisième option ouverte. L'applicabilité métier (cases libres pour l'achat d'une pièce) reste validée à l'achat ; les biais de couleur inutiles en cours de run ne sont plus proposés.
 - Choix du niveau d'IA de la PR de base **conservé**. On ne réécrit pas l'expérience sous un réglage de difficulté caché.
 
 Ces chiffres sont des **hypothèses initiales**, PAS « les bonnes valeurs » garanties. L'outil fournit les mesures pour les ajuster après retours humains et exécution de vraies runs.
