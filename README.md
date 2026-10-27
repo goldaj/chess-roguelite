@@ -1,3 +1,9 @@
+## Nouveauté du prototype sur PR #2 : adversaire tactique (27/10/2026)
+
+La [PR #2](https://github.com/goldaj/chess-roguelite/pull/2) ajoute **trois difficultés d'IA accessibles dans Options** : Facile (capture immédiate), Normal (anticipe la réponse) et Difficile (anticipe deux réponses, recherche bornée). Le niveau est conservé dans la sauvegarde méta, avec compatibilité des anciennes sauvegardes.
+
+Les pouvoirs de gel ont un vrai effet pendant un tour : l'IA choisit une autre pièce si possible, puis le gel expire. **25 tests unitaires et un démarrage Pygame simulé** ont été exécutés en CI ; le ressenti d'une partie complète reste à tester. Cette PR est empilée sur [PR #1](https://github.com/goldaj/chess-roguelite/pull/1) et n'est pas fusionnée à `develop` ; la documentation précise est dans [docs/TACTICAL_AI_DELIVERY.md](docs/TACTICAL_AI_DELIVERY.md).
+
 # Chess Roguelite — échecs et progression
 
 Version améliorée (assets lisibles type chess.com, shop aléatoire 3 choix, plateau initial 8x3, coordonnées, UI boutons + animations).
