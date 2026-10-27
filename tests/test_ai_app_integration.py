@@ -63,6 +63,8 @@ def create_game():
     game.piece_value = lambda kind: {"P": 1, "Q": 9}.get(kind, 0)
     game.meta = {"stats": {"runs": 0}}
     game.screen = type("Screen", (), {"get_size": lambda s: (900, 750)})()
+    game.toggle_fullscreen = lambda: None
+    game.back_to_prev_from_options = lambda: None
     return game, writes
 
 
