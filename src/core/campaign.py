@@ -161,8 +161,14 @@ def draft_shop_offers(pool: list[dict], gold: int, *, rng=None) -> list[dict]:
     valuable = [item for item in affordable
                 if item.get("type") in ("tick", "buy_piece", "convert", "start_power")]
     first = rng.choice(valuable or affordable)
-    remaining = [item for item in pool if item["id"] != first["id"]]
-    return [first, *rng.sample(remaining, 2)]
+    # A shop with just one affordable offer is a menu of two unavailable
+    # buttons, not a choice. Give at least two payable options when possible.
+    second_choices = [item for item in affordable if item["id"] != first["id"]]
+    second = rng.choice(second_choices) if second_choices else None
+    chosen = [first] + ([second] if second is not None else [])
+    remaining = [item for item in pool
+                 if item["id"] not in {x["id"] for x in chosen}]
+    return chosen + rng.sample(remaining, 3 - len(chosen))
 
 
 def record_stage_result(meta: dict, *, stage: int, route: str,
