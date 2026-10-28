@@ -1,3 +1,13 @@
+## Contribution de test rapide du 28/10/2026 : PR #4, Windows autonome
+
+**PR #4** : https://github.com/goldaj/chess-roguelite/pull/4 ; branche `feat/gpt6-windows-playtest-20261028` **empilée sur PR #3**, elle-même sur PR #2 puis PR #1. Sans modification des règles, des ticks, de l'IA, des achats ou du contenu existant.
+
+Cette branche ajoute `playtest_entry.py`, `LANCER_WINDOWS.bat`, `.github/workflows/windows-playtest.yml` et `docs/PLAYTEST_WINDOWS.md` : **un vrai exécutable Windows .exe produit et exécuté par la CI** (PyInstaller, dossier avec assets + content), et alternative BAT créant un venv. L'entrée redirige les écritures dans le **dossier playtest %LOCALAPPDATA%**, jamais dans le `save.json` de production. Le workflow doit réussir le smoke du **binaire compilé**, et publier un ZIP sous `ChessRoguelite-Windows-Playtest`, avant de le proposer.
+
+**Pour Codex :** relire le guide, les checks du dernier HEAD, le test de sauvegarde isolée et la liste des artifacts. Ne pas fusionner PR #4 avant PR #3, ni prétendre qu'une version navigateur existe. Interventions très ciblées exclusivement sur le packaging et son exécution ; aucun code gameplay modifié.
+
+---
+
 ## Avertissement Codex : PR #3 nouvelle campagne et équilibrage expérimental, 27/10/2026
 
 Nouvelle branche **`feat/gpt6-branching-campaign-20261027`**, [PR #3](https://github.com/goldaj/chess-roguelite/pull/3) **brouillon, base `research/gpt6-tactical-ai-after-review-20261027` (PR #2)**, elle-même fille de PR #1.
