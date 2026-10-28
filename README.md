@@ -1,3 +1,11 @@
+## Tester facilement les modifications sur Windows (PR #4, 28/10/2026)
+
+**Version Windows prête à lancer, sans Python :** ouvrir [Build Windows playtest](https://github.com/goldaj/chess-roguelite/actions/workflows/windows-playtest.yml), choisir la dernière exécution **verte** de la branche `feat/gpt6-windows-playtest-20261028`, télécharger dans **Artifacts** le ZIP `ChessRoguelite-Windows-Playtest`, l'extraire et double-cliquer sur `ChessRoguelite-Playtest.exe`. Garder le dossier `_internal` à côté de l'EXE.
+
+**Alternative avec Python :** télécharger le ZIP du code de cette branche, l'extraire et double-cliquer sur `LANCER_WINDOWS.bat`. Installation de Pygame/Pillow dans un venv propre au premier lancement, puis démarrages rapides.
+
+**Les deux modes préservent la sauvegarde de production :** progression expérimentale dans `%LOCALAPPDATA%\ChessRoguelitePlaytest\save.json`. Le test concerne la campagne de la PR #3 ; aucune release ou fusion dans `develop`. Guide complet : [docs/PLAYTEST_WINDOWS.md](docs/PLAYTEST_WINDOWS.md). Une version navigateur n'est pas encore disponible ; elle exige un port spécifique du loop Pygame/persistance.
+
 ## Campagne à objectifs jouable et rééquilibrage expérimental (PR #3, 27/10/2026)
 
 [PR #3](https://github.com/goldaj/chess-roguelite/pull/3) **brouillon empilée** sur [PR #2](https://github.com/goldaj/chess-roguelite/pull/2) : six adversaires distincts, mission de prises affichée pour gagner sur le temps, trois voies Équilibrée/Prudente/Audacieuse entre les manches, récompenses et budgets explicites, meilleure boutique et conservation de toutes les pièces achetées. La voie prudente gèle la pièce ennemie la plus forte pour son premier tour ; la voie audacieuse renforce l'ennemi et l'objectif contre plus d'or.
