@@ -29,3 +29,6 @@ local.properties
 # Personal game progress (sample/default files stay versioned)
 save.json
 idle_save.json
+
+# One-click Windows launcher creates this disposable Python environment
+.venv-playtest/
