@@ -84,3 +84,14 @@ Sauvegardes meta écrites atomiquement (tempfile + os.replace), test de maintien
 > tu peux aussi me faire quelque chose pour que je puisse facilement lancer le programme sur mon poste, voire en web, pour que j'arrive à tester rapidement tes modifs
 
 **Assistant (résumé non verbatim)** : plutôt que modifier la campagne figée, a créé la branche `feat/gpt6-windows-playtest-20261028` et la PR #4 empilée sur PR #3. A ajouté un double-clic `LANCER_WINDOWS.bat` (venv dédié) et surtout un workflow GitHub Windows qui installe les dépendances, construit via PyInstaller un **exécutable et ses ressources** et **exécute ce vrai .exe** avec SDL dummy/automatisation avant de fournir un ZIP artifact utilisable sans Python. Le point d'entrée `playtest_entry.py` crée une sauvegarde playtest distincte sous LocalAppData sans toucher aux sauvegardes existantes. Documentation de téléchargement/utilisation dans `docs/PLAYTEST_WINDOWS.md`, tests de cloisonnement de sauvegarde et CI sur la branche. **Port Web non réalisé : Pygame desktop nécessite un chantier spécifique HTML5/persistance ; ne pas l'annoncer comme disponible.** Aucun changement de règle, IA, équilibrage ou déploiement sur `develop`; PR laissée en brouillon.
+
+
+
+## 2026-10-29 : règles et IA
+
+Utilisateur (verbatim, date de ce fil, heure individuelle inconnue) : « Je ne te demande pas de créer une tâche planifiée qui continue chaque jour. Je te demande de continuer maintenant en boucle et de ne pas t'arrêter sur juste 3 améliorations alors qu'il y a plus de 40 repo et plusieurs améliorations possibles par repo ».
+
+Assistant (résumé non verbatim) : quatrième rotation de dépôts, intervention sur `chess-roguelite` pour corriger prise en passant, promotion lorsque les noirs sont en bas et adversaire anticipant un demi-coup ennemi. Tests purs sans Pygame, CI et documentation `docs/CHESS_RULES_AI.md`. L'exécution graphique interactive demeure non validée.
+
+
+> Consolidation 29/10/2026 : PR #5 intégrée dans la branche unique PR #4 ; IA à trois difficultés et prise en passant de la PR #4 préservées.

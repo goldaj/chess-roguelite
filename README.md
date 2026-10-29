@@ -50,3 +50,12 @@ La progression personnelle (`src/meta/save.json`) reste sur le poste et est igno
 | [Idle Clicker](https://github.com/goldaj/idle-clicker-tkinter) | Clics, revenus et achats avec coût dynamique | Interface de bureau Tkinter/ttkbootstrap |
 
 Ces dépôts conservent des expériences distinctes, à différents niveaux d'avancement.
+
+
+
+## Nouvelle IA tactique et règles corrigées (2026-10-29)
+
+Le moteur d'échecs gère désormais les prises en passant et la promotion indépendamment de l'orientation. L'IA anticipe une réponse adverse (2 demi-coups) pour éviter des prises manifestement perdantes. Tests unitaires et CI Python, voir [docs/CHESS_RULES_AI.md](docs/CHESS_RULES_AI.md).
+
+
+> Consolidation 29/10/2026 : PR #5 intégrée dans la branche unique PR #4 ; IA à trois difficultés et prise en passant de la PR #4 préservées.
