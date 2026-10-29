@@ -135,7 +135,9 @@ class Board:
                         moves.append((cx,cy))
                     # en passant capture onto empty square equals en_passant
                     elif self.en_passant == (cx,cy):
-                        moves.append((cx,cy))
+                        neighbor = self.get(cx, y)
+                        if neighbor and neighbor.kind == 'P' and neighbor.color != p.color:
+                            moves.append((cx,cy))
         # filter self-check
 
         km=self.locate_king(p.color)
@@ -148,13 +150,27 @@ class Board:
                 legal.append((xx,yy))
         return legal
     def move_and_promote(self,x1,y1,x2,y2):
-        p=self.get(x1,y1)
+        p = self.get(x1,y1)
+        if p is None:
+            return
+        previous_en_passant = self.en_passant
+        target = self.get(x2,y2)
+        self.en_passant = None
+        if p.kind == 'P':
+            direction = -1 if p.color == self.bottom_color else 1
+            # En passant only immediately after the opposing pawn's double push.
+            if x1 != x2 and target is None and previous_en_passant == (x2,y2):
+                victim = self.get(x2,y1)
+                if victim and victim.kind == 'P' and victim.color != p.color:
+                    self.set(x2,y1,None)
+            if x1 == x2 and y2-y1 == 2*direction and not p.moved:
+                self.en_passant = (x1,y1+direction)
+            if (p.color == self.bottom_color and y2 == 0) or (
+                p.color != self.bottom_color and y2 == self.h-1
+            ):
+                p = Piece('Q',p.color,True)
         self.set(x1,y1,None)
-        if p:
-            p.moved = True
-        if p and p.kind=='P':
-            if (p.color=='w' and y2==0) or (p.color=='b' and y2==self.h-1):
-                p=Piece('Q',p.color)
+        p.moved = True
         self.set(x2,y2,p)
 
 

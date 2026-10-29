@@ -15,3 +15,9 @@ Lancer `python -m src.main` après installation pygame et pillow ; préserver sa
 
 ## Limites
 Aucun AGENTS.md initial. Il manque encore les questions et réponses intégrales des anciennes séances ; aucun message de l'assistant n'est inventé. Compléter depuis les exports authentiques si disponibles, avec examen préalable des données sensibles avant toute publication. Ajouter ensuite des entrées horodatées `Utilisateur (verbatim)` / `Assistant (verbatim)` lorsque les textes exacts sont accessibles.
+
+## 2026-10-29 : règles et IA
+
+Utilisateur (verbatim, date de ce fil, heure individuelle inconnue) : « Je ne te demande pas de créer une tâche planifiée qui continue chaque jour. Je te demande de continuer maintenant en boucle et de ne pas t'arrêter sur juste 3 améliorations alors qu'il y a plus de 40 repo et plusieurs améliorations possibles par repo ».
+
+Assistant (résumé non verbatim) : quatrième rotation de dépôts, intervention sur `chess-roguelite` pour corriger prise en passant, promotion lorsque les noirs sont en bas et adversaire anticipant un demi-coup ennemi. Tests purs sans Pygame, CI et documentation `docs/CHESS_RULES_AI.md`. L'exécution graphique interactive demeure non validée.
