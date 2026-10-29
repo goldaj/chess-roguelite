@@ -5,6 +5,10 @@ from pygame.locals import *
 try:
     from .core.board import Board, Piece
     from .core.ai import choose_move
+    from .core.campaign import (ROUTES, prepare_encounter, victory_reward,
+                                validate_campaign, draft_shop_offers,
+                                record_stage_result, capture_progress)
+    from .core.formation import make_board
     from .ui.assets_loader import Assets
     from .ui.buttons import Button
     from .meta.save import load_meta, save_meta
@@ -12,6 +16,10 @@ except ImportError:
     sys.path.append(os.path.dirname(__file__))
     from core.board import Board, Piece
     from core.ai import choose_move
+    from core.campaign import (ROUTES, prepare_encounter, victory_reward,
+                               validate_campaign, draft_shop_offers,
+                               record_stage_result, capture_progress)
+    from core.formation import make_board
     from ui.assets_loader import Assets
     from ui.buttons import Button
     from meta.save import load_meta, save_meta
@@ -31,6 +39,8 @@ for _p in CONTENT_PATHS:
         break
 if CONTENT is None:
     raise FileNotFoundError(f"shop_items.json introuvable aux chemins: {CONTENT_PATHS}")
+
+validate_campaign(CONTENT["stages"])
 
 PIECE_VALUES = CONTENT["piece_values"]
 TICK_COSTS = CONTENT["tick_costs"]
@@ -64,6 +74,9 @@ class App:
         self.tile=96
         self.assets.load(self.tile)
         self.meta = load_meta()
+        # New preference, compatible with saves created before the AI modes.
+        saved_level = self.meta.get('ai_difficulty', 'normal')
+        self.ai_difficulty = saved_level if saved_level in ('easy', 'normal', 'hard') else 'normal'
         self.buttons=[]
         self.state="menu"
         self.phase="menu"
@@ -92,6 +105,12 @@ class App:
         self.phase = "manche"
         self.btns_play = []
         self.stage_index=0
+        self.active_route = "steady"
+        self.route_choice = "steady"
+        self.shop_ticks_bonus = 0
+        self.shop_enemy_tick_reduction = 0.0
+        self.shop_stage_index = None
+        self.purchased_offers = set()
         self.manches_won = 0
         self.gold=0
         self.double_start=False
@@ -104,12 +123,12 @@ class App:
         self.enemy_tick_factor=1.0
         self.player_color = 'w' if random.random() < (0.5 + self.bias_white - self.bias_black) else 'b'
         self.enemy_color = 'b' if self.player_color=='w' else 'w'
-        sd = CONTENT["stages"][0]
+        sd = prepare_encounter(CONTENT["stages"][0], "steady")
         self.board_w,self.board_h = sd["board"]
-        self.player_ticks = 100 + self.meta["permanent"]["start_ticks_bonus"]
-        self.enemy_ticks = 100
+        self.player_ticks = sd["player_ticks"] + self.meta["permanent"]["start_ticks_bonus"]
+        self.enemy_ticks = sd["enemy_ticks"]
         self.player_army = dict(self.meta["starting_deck"])
-        self.enemy_army = dict(sd["enemy_start"])
+        self.enemy_army = dict(sd["enemy_army"])
         self.selection=None; self.legal_moves=[]
         self.place_armies_initial_layout()
         self.frozen_coords=set()
@@ -120,72 +139,10 @@ class App:
     
     
     def place_armies_initial_layout(self):
-        # Player pieces always at bottom; enemy at top. Colors preserved.
-        self.board = Board(self.board_w, self.board_h)
-        self.board.bottom_color = self.player_color
-
-        def center_cols(count, width):
-            if count >= width: return list(range(width))
-            mid = width // 2
-            cols=[mid]; L=mid-1; R=mid+1
-            while len(cols)<count and (L>=0 or R<width):
-                if L>=0: cols.append(L); L-=1
-                if len(cols)>=count: break
-                if R<width: cols.append(R); R+=1
-            cols.sort(); return cols[:count]
-
-        def place_bottom(army, color):
-            pawn_row = self.board_h - 2
-            back_row = self.board_h - 1
-            cols3 = center_cols(3, self.board_w)
-            p_count = min(army.get('P',0), len(cols3))
-            for i in range(p_count):
-                self.board.set(cols3[i], pawn_row, Piece('P', color))
-            back_kinds = ['R','K','N'][:len(cols3)]
-            for kind, fx in zip(back_kinds, cols3):
-                if army.get(kind,0)>0:
-                    self.board.set(fx, back_row, Piece(kind, color))
-            for kind in ('B','Q','A','R','N','P'):
-                base_count = 1 if kind in ('R','K','N') else 0
-                base_p = p_count if kind=='P' else 0
-                extra = max(0, army.get(kind,0) - base_count - base_p)
-                for _ in range(extra):
-                    placed=False
-                    for y in [back_row, pawn_row]:
-                        for x in range(self.board_w):
-                            if self.board.get(x,y) is None:
-                                self.board.set(x,y, Piece(kind, color)); placed=True; break
-                        if placed: break
-
-        def place_top(army, color):
-            pawn_row = 1
-            back_row = 0
-            cols3 = center_cols(3, self.board_w)
-            p_count = min(army.get('P',0), len(cols3))
-            for i in range(p_count):
-                self.board.set(cols3[i], pawn_row, Piece('P', color))
-            back_kinds = ['R','K','N'][:len(cols3)]
-            for kind, fx in zip(back_kinds, cols3):
-                if army.get(kind,0)>0:
-                    self.board.set(fx, back_row, Piece(kind, color))
-            for kind in ('B','Q','A','R','N','P'):
-                base_count = 1 if kind in ('R','K','N') else 0
-                base_p = p_count if kind=='P' else 0
-                extra = max(0, army.get(kind,0) - base_count - base_p)
-                for _ in range(extra):
-                    placed=False
-                    for y in [back_row, pawn_row]:
-                        for x in range(self.board_w):
-                            if self.board.get(x,y) is None:
-                                self.board.set(x,y, Piece(kind, color)); placed=True; break
-                        if placed: break
-
-        if self.player_color == 'w':
-            place_bottom(self.player_army, 'w')
-            place_top(self.enemy_army, 'b')
-        else:
-            place_bottom(self.player_army, 'b')
-            place_top(self.enemy_army, 'w')
+        """Prepare all owned pieces on their home rows, without losing any."""
+        self.board = make_board(self.board_w, self.board_h,
+                                self.player_army, self.enemy_army,
+                                self.player_color)
 
     def build_menu_buttons(self):
         self.buttons = []
@@ -224,7 +181,7 @@ class App:
         sw, sh = self.screen.get_size()
         side_panel = max(360, sw // 4)
         x = sw - side_panel + 20
-        y = 200  # below gold/ticks/manche info
+        y = 244  # below stage, route and capture-goal readouts
         self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Options", self.open_options)); y += 58
         self.btns_play.append(Button(pygame.Rect(x, y, side_panel - 40, 44), "Aller au menu (sauver le deck)", self.back_to_menu)); y += 58
         if self.freeze_target_stock > 0:
@@ -235,12 +192,20 @@ class App:
         if self.phase != "inter":
             return  # guard: only between manches
         # Build extended pool with transform offers
-        CONTENT['__shop_pool_extended'] = list(CONTENT['shop_pool'])
+        CONTENT['__shop_pool_extended'] = [
+            item for item in CONTENT['shop_pool']
+            if item.get('type') != 'bias'
+            and (item.get('piece') != 'A' or self.meta.get('amazon_unlocked'))
+        ]
         buy_costs = CONTENT.get('buy_costs', {'P':5,'N':12,'B':12,'R':18,'Q':30,'A':50})
         for k in ['Q','R','B','N'] + (['A'] if self.meta.get('amazon_unlocked') else []):
             CONTENT['__shop_pool_extended'].append({'id': f'transform_to_{k}', 'name': f'Transformer une pièce en {PIECE_NAMES_FR[k]}', 'type': 'transform_to', 'piece': k, 'cost': max(4, int(buy_costs.get(k,10)*0.6))})
         # build 3 random offers + 'Continuer' button
-        self.shop_offers = random.sample(CONTENT["shop_pool"], 3)
+        if getattr(self, 'shop_stage_index', None) != self.stage_index:
+            self.shop_stage_index = self.stage_index
+            self.purchased_offers = set()
+            self.shop_offers = draft_shop_offers(
+                CONTENT["__shop_pool_extended"], self.gold)
         self.shop_btns=[]
         sw,sh=self.screen.get_size()
         y=140
@@ -252,7 +217,20 @@ class App:
             btn=Button(pygame.Rect(60,y, 760, 48), f"{it['name']}  (coût {it.get('cost',0)})", make_cb())
             self.shop_btns.append(btn)
             y+=70
-        self.shop_continue=Button(pygame.Rect(60,y+10, 300, 48), "Continuer", self.shop_continue_next)
+        self.shop_continue=Button(pygame.Rect(60,y+10, 300, 48), "Combattre", self.shop_continue_next)
+        self.shop_route_btns = []
+        # Strategic choice is available at every intermission, not a hidden
+        # modifier applied after shopping. Changes to route do not reset buys.
+        for i, route in enumerate(ROUTES):
+            self.shop_route_btns.append(Button(
+                pygame.Rect(60, 440+i*54, min(760, sw-120), 46),
+                "", lambda selected=route: self.select_route(selected)))
+
+    def select_route(self, route):
+        if route not in ROUTES:
+            raise ValueError("unknown route")
+        self.route_choice = route
+        self.message = f"Voie {ROUTES[route]['label']} choisie."
     
     def start_game(self):
         self.reset_run()
@@ -271,7 +249,16 @@ class App:
         def add(y,text,cb):
             self.opt_btns.append(Button(pygame.Rect(sw//2-220, y, 440, 52), text, cb))
         add(int(sh*0.45), "Basculer plein écran / fenêtré", self.toggle_fullscreen)
-        add(int(sh*0.45)+70, "Retour", self.back_to_prev_from_options)
+        labels = {"easy": "Facile", "normal": "Normal", "hard": "Difficile"}
+        add(int(sh*0.45)+70, f"Adversaire IA : {labels[self.ai_difficulty]}", self.cycle_ai_difficulty)
+        add(int(sh*0.45)+140, "Retour", self.back_to_prev_from_options)
+
+    def cycle_ai_difficulty(self):
+        levels = ("easy", "normal", "hard")
+        self.ai_difficulty = levels[(levels.index(self.ai_difficulty) + 1) % len(levels)]
+        self.meta["ai_difficulty"] = self.ai_difficulty
+        save_meta(self.meta)
+        self.build_options_buttons()
     
     def toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
@@ -306,56 +293,82 @@ class App:
     
     def start_stage(self):
         self.recompute_tile()
-        if self.double_start or self.double_start_always:
-            self.pre_moves_left=2
-        else:
-            self.pre_moves_left=0
+        self.pre_moves_left = 2 if (self.double_start or self.double_start_always) else 0
+        # 'next stage' must be consumed once; permanent buff remains separate.
+        self.double_start = False
+        if self.active_route == "safe":
+            # A genuine defensive option: freeze the highest-value non-king
+            # threat for its first move, not merely extra ticks that may
+            # otherwise be irrelevant before the enemy clock expires.
+            self.apply_freeze_strongest_enemy()
         if self.freeze_random_next:
             self.apply_freeze_random_enemy(); self.freeze_random_next=False
         self.build_ingame_buttons()
     
-    def end_stage(self, win:bool):
-        bonus = int(self.player_ticks * CONTENT["tick_reward_factor"])
+    def end_stage(self, win: bool):
+        surviving_army = self.count_army(self.player_color)
+        material_values = {"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "A": 12}
+        record_stage_result(
+            self.meta, stage=self.stage_index + 1, route=self.active_route,
+            ai_difficulty=self.ai_difficulty, won=win,
+            remaining_player_ticks=self.player_ticks,
+            remaining_enemy_ticks=self.enemy_ticks,
+            player_material=sum(material_values.get(k, 0) * n
+                                for k, n in surviving_army.items()))
+        save_meta(self.meta)  # keep completed battles even when user exits early
         if win:
-            self.gold += bonus + 5
-        if win:
+            # Earning rewards is a consequence of the chosen route, not a
+            # random extra roll hidden from the player.
+            self.gold += victory_reward(
+                CONTENT["stages"][self.stage_index], self.active_route,
+                self.player_ticks, CONTENT["tick_reward_factor"])
             self.manches_won += 1
             self.stage_index += 1
             if self.stage_index >= len(CONTENT["stages"]):
-                if not self.meta["amazon_unlocked"]:
-                    self.meta["amazon_unlocked"] = True
+                self.meta["amazon_unlocked"] = True
                 self.meta["stats"]["runs"] += 1
                 self.meta["stats"]["wins"] += 1
                 save_meta(self.meta)
+                self.message = "Le Roi de fer est vaincu !"
                 self.state = "meta"
             else:
-                # Prepare next manche
-                sd = CONTENT["stages"][self.stage_index]
-                self.board_w, self.board_h = sd["board"]
-                self.recompute_tile()
-                # Player carries over surviving pieces
+                # Restore all surviving (and previously purchased) pieces.
+                # Shop purchases act on this board before the chosen route
+                # rebuilds the opposing formation on 'Combattre'.
                 self.player_army = self.count_army(self.player_color)
-                # Enemy refreshes from base + boosts
-                base_enemy = sd.get("enemy_start", {"K":1, "P":3})
-                self.enemy_army = dict(base_enemy)
-                boost = sd.get("enemy_boost", 0)
-                for _ in range(boost):
-                    kind = random.choice(['P','N','B','R'])
-                    self.enemy_army[kind] = self.enemy_army.get(kind,0) + 1
-                # Reset ticks to stage-defined values
-                self.player_ticks = sd.get("player_ticks", 12)
-                self.enemy_ticks = sd.get("enemy_ticks", 12)
-                # Re-place armies for new board
+                self.route_choice = "steady"
+                self.active_route = "steady"
+                self.shop_ticks_bonus = 0
+                self.shop_enemy_tick_reduction = 0.0
+                upcoming = prepare_encounter(CONTENT["stages"][self.stage_index])
+                self.board_w, self.board_h = upcoming["board"]
+                self.enemy_army = dict(upcoming["enemy_army"])
+                self.player_ticks = upcoming["player_ticks"]
+                self.enemy_ticks = upcoming["enemy_ticks"]
                 self.place_armies_initial_layout()
-                self.selection=None; self.legal_moves=[]
+                self.frozen_coords.clear()
+                self.selection = None
+                self.legal_moves = []
                 self.phase = "inter"
                 self.state = "shop"
                 self.build_shop_buttons()
         else:
-            self.meta["stats"]["runs"]+=1
+            self.meta["stats"]["runs"] += 1
             save_meta(self.meta)
-            self.state="meta"
-    
+            self.state = "meta"
+
+    def apply_freeze_strongest_enemy(self):
+        """One defensive freeze on the highest-value enemy piece, for one turn."""
+        candidates = []
+        for x in range(self.board_w):
+            for y in range(self.board_h):
+                piece = self.board.get(x, y)
+                if piece and piece.color == self.enemy_color and piece.kind != "K":
+                    candidates.append((self.piece_value(piece.kind), x, y))
+        if candidates:
+            _, x, y = max(candidates)
+            self.frozen_coords.add((x, y))
+
     def apply_freeze_random_enemy(self):
         coords=[]
         for x in range(self.board_w):
@@ -426,12 +439,11 @@ class App:
             self.gold += self.piece_value(t.kind)
         cost=self.cost_for_piece(p.kind)
         self.player_ticks -= cost
-        if self.player_ticks <= 0:
-            self.message="Vous manquez de temps !"; self.end_stage(False); return
         ek=self.board.locate_king(self.enemy_color)
-        no_enemy = all((self.board.get(x,y) is None or self.board.get(x,y).color!=self.enemy_color) for x in range(self.board_w) for y in range(self.board_h))
-        if ek is None or no_enemy:
+        if ek is None:
             self.message="Roi ennemi capturé !"; self.end_stage(True); return
+        if self.player_ticks <= 0:
+            self.message="Vos ticks sont épuisés !"; self.end_stage(False); return
         if self.pre_moves_left>0:
             self.pre_moves_left-=1
             if self.pre_moves_left==0: self.turn=self.enemy_color
@@ -439,93 +451,148 @@ class App:
             self.turn=self.enemy_color
     
     def do_enemy_turn(self):
-        move=choose_move(self.board, self.enemy_color)
+        # Frozen pieces are ineligible, not a reason to throw away a legal
+        # move by another piece. Freeze lasts exactly one enemy decision.
+        move=choose_move(self.board, self.enemy_color,
+                         difficulty=self.ai_difficulty, frozen=self.frozen_coords)
+        self.frozen_coords.clear()
         if move is None:
-            # No legal move (pat) -> skip enemy turn (no end-of-manche)
+            # Existing variant rule: an enemy without legal moves passes.
             self.turn=self.player_color; return
         (x1,y1),(x2,y2)=move
-        if (x1,y1) in self.frozen_coords:
-            self.frozen_coords.discard((x1,y1))
-            self.turn=self.player_color; return
         p=self.board.get(x1,y1); t=self.board.get(x2,y2)
         # animate enemy
         self.animate_move(x1,y1,x2,y2)
         self.board.move_and_promote(x1,y1,x2,y2)
         cost=1 * self.enemy_tick_factor
         self.enemy_ticks -= cost
-        if self.enemy_ticks <= 0:
-            self.message="L'ennemi manque de temps !"; self.end_stage(True); return
         pk=self.board.locate_king(self.player_color)
-        no_player = all((self.board.get(x,y) is None or self.board.get(x,y).color!=self.player_color) for x in range(self.board_w) for y in range(self.board_h))
-        if pk is None or no_player:
+        if pk is None:
             self.message="Votre roi est capturé..."; self.end_stage(False); return
+        if self.enemy_ticks <= 0:
+            progress = capture_progress(
+                self.board, self.enemy_color, CONTENT["stages"][self.stage_index],
+                self.active_route)
+            if progress["met"]:
+                self.message="Objectif atteint : la bataille est gagnée !"
+                self.end_stage(True)
+            else:
+                self.message=("Mission ratée : " +
+                              f"{progress['captured']}/{progress['required']} "
+                              "points ennemis capturés.")
+                self.end_stage(False)
+            return
         self.turn=self.player_color
     
     # SHOP
     def purchase(self, item):
-        cost=item.get('cost',0)
+        offer_id = item['id']
+        if offer_id in self.purchased_offers:
+            self.message = "Offre déjà achetée."
+            return
+        cost = item.get('cost', 0)
         if self.gold < cost:
-            self.message="Pas assez d'or."; return
-        t=item['type']
-        if t=='tick':
+            self.message = "Pas assez d'or."
+            return
+        t = item['type']
+        if t == 'transform_to':
+            self.try_transform_to(item)
+            return
+        if t == 'buy_piece':
+            if not self.buy_piece_dialog(item['piece']):
+                return
+        elif t == 'convert':
+            if not self.convert_piece_dialog():
+                return
+        elif t == 'tick':
+            self.shop_ticks_bonus += item['amount']
             self.player_ticks += item['amount']
-        elif t=='tick_enemy':
-            self.enemy_tick_factor = max(0.5, 1.0 + item['amount'])
-        elif t=='economy' and item.get('effect')=='double':
-            self.gold *= 2
-        elif t=='consumable':
-            if item['effect']=='freeze_random':
-                self.freeze_random_next=True
-            elif item['effect']=='freeze_target':
+        elif t == 'tick_enemy':
+            # Applies to NEXT combat's tick budget, not the burn speed of all
+            # future combats. The old sign actually helped the enemy.
+            self.shop_enemy_tick_reduction = min(
+                0.35, self.shop_enemy_tick_reduction + abs(item['amount']))
+        elif t == 'economy' and item.get('effect') == 'double':
+            # Avoid exponential free money across five shops.
+            self.gold += min(self.gold, 36)
+        elif t == 'consumable':
+            if item['effect'] == 'freeze_random':
+                self.freeze_random_next = True
+            elif item['effect'] == 'freeze_target':
                 self.freeze_target_stock += 1
-        elif t=='start_power':
-            if item['effect']=='double_once': self.double_start=True
-            else: self.double_start_always=True
-        elif t=='bias':
-            if item['side']=='white': self.bias_white += item['amount']
-            else: self.bias_black += item['amount']
-        elif t=='zero_cost':
-            k=item['piece']; self.zero_cost_probs[k]=min(0.95, self.zero_cost_probs.get(k,0)+item['chance'])
-        elif t=='convert':
-            self.convert_piece_dialog()
-        elif t=='buy':
-            self.buy_piece_dialog()
+        elif t == 'start_power':
+            if item['effect'] == 'double_once':
+                self.double_start = True
+            else:
+                self.double_start_always = True
+        elif t == 'bias':
+            if item['side'] == 'white':
+                self.bias_white += item['amount']
+            else:
+                self.bias_black += item['amount']
+        elif t == 'zero_cost':
+            kind = item['piece']
+            self.zero_cost_probs[kind] = min(0.95, self.zero_cost_probs.get(kind, 0) + item['chance'])
+        else:
+            self.message = "Offre inconnue."
+            return
         self.gold -= cost
-        self.message=f"Achat : {item['name']}"
-    
+        self.purchased_offers.add(offer_id)
+        self.message = f"Achat : {item['name']}"
+
     def shop_continue_next(self):
-        # proceed to next manche
+        # Commit the player's route AFTER shopping: keep acquired pieces and
+        # ticks. Rebuilding earlier would silently undo bought units/bonuses.
+        encounter = prepare_encounter(
+            CONTENT["stages"][self.stage_index], self.route_choice)
+        self.player_army = self.count_army(self.player_color)
+        self.enemy_army = dict(encounter["enemy_army"])
+        self.player_ticks = encounter["player_ticks"] + self.shop_ticks_bonus
+        self.enemy_ticks = max(
+            1, math.ceil(encounter["enemy_ticks"] * (1 - self.shop_enemy_tick_reduction)))
+        self.active_route = self.route_choice
+        self.place_armies_initial_layout()
+        self.frozen_coords.clear()
+        self.selection = None
+        self.legal_moves = []
+        self.shop_ticks_bonus = 0
+        self.shop_enemy_tick_reduction = 0.0
+        # Existing rule: white plays first in each fresh encounter.
+        self.turn = 'w'
         self.phase = "manche"
         self.start_stage()
-        self.state="play"
+        self.state = "play"
     
     def convert_piece_dialog(self):
-        options=[]
-        for k,v in CONTENT["convert_costs"].items():
-            src,dst=k.split("->")
-            if self.player_army.get(src,0)>0:
-                options.append((src,dst,v))
-        if not options:
-            self.message="Aucune conversion possible."; return
-        options.sort(key=lambda x:x[2])
-        src,dst,cost=options[0]
-        if self.gold < cost:
-            self.message=f"Conversion {src}->{dst} coûte {cost} or."; return
-        self.player_army[src]-=1
-        self.player_army[dst]=self.player_army.get(dst,0)+1
-        self.gold -= cost
-        self.message=f"Converti {src} en {dst}."
-    
-    def buy_piece_dialog(self):
-        pool=['P','N','B','R','Q']
-        if self.meta["amazon_unlocked"]: pool.append('A')
-        kind=random.choice(pool); cost=CONTENT["buy_costs"][kind]
-        if self.gold < cost:
-            self.message=f"Acheter {kind} coûte {cost} or."; return
-        self.player_army[kind]=self.player_army.get(kind,0)+1
-        self.gold -= cost
-        self.message=f"Acheté {kind}."
-    
+        """Change a real board piece, not only the future army counter."""
+        options = sorted(CONTENT["convert_costs"].items(), key=lambda entry: entry[1])
+        for rule, _ in options:
+            source, destination = rule.split("->")
+            for y in range(self.board_h):
+                for x in range(self.board_w):
+                    piece = self.board.get(x, y)
+                    if piece and piece.color == self.player_color and piece.kind == source:
+                        self.board.set(x, y, Piece(destination, self.player_color, True))
+                        self.player_army = self.count_army(self.player_color)
+                        return True
+        self.message = "Aucune pièce éligible à convertir."
+        return False
+
+    def buy_piece_dialog(self, kind):
+        """Place the purchased piece on a free home-rank square."""
+        if kind == 'A' and not self.meta.get('amazon_unlocked'):
+            self.message = "Amazone non débloquée."
+            return False
+        home_rows = (self.board_h - 1, self.board_h - 2)
+        for y in home_rows:
+            for x in range(self.board_w):
+                if self.board.get(x, y) is None:
+                    self.board.set(x, y, Piece(kind, self.player_color))
+                    self.player_army = self.count_army(self.player_color)
+                    return True
+        self.message = "Aucune case de départ libre pour cette pièce."
+        return False
+
     # Drawing
     
     def open_meta(self):
@@ -634,9 +701,19 @@ class App:
         self.screen.blit(self.assets.icons["tick"], (panel.x+16, 60))
         draw_text(self.screen, f"Vos ticks : {int(self.player_ticks)}", (panel.x+54, 62), 22)
         draw_text(self.screen, f"Ticks ennemi : {int(self.enemy_ticks)}", (panel.x+54, 90), 22, (180,200,220))
-        draw_text(self.screen, f"Manche : {self.stage_index+1}", (panel.x+16, 126), 24)
-        if self.double_start or self.double_start_always:
-            draw_text(self.screen, f"Double coup initial", (panel.x+16, 158), 20, (255,230,130))
+        draw_text(self.screen, f"Manche {self.stage_index+1}/{len(CONTENT['stages'])}",
+                  (panel.x+16, 122), 22)
+        draw_text(self.screen, CONTENT["stages"][self.stage_index]["name"],
+                  (panel.x+16, 152), 18)
+        draw_text(self.screen, f"Voie : {ROUTES[self.active_route]['label']}",
+                  (panel.x+16, 173), 16)
+        progress = capture_progress(
+            self.board, self.enemy_color,
+            CONTENT["stages"][self.stage_index], self.active_route)
+        draw_text(self.screen, f"Objectif : {progress['captured']}/{progress['required']} points",
+                  (panel.x+16, 194), 16, (220, 205, 140))
+        if self.pre_moves_left:
+            draw_text(self.screen, "Double coup actif", (panel.x+16, 216), 16)
         if self.message:
             draw_text(self.screen, self.message, (panel.x+16, H-48), 20, (220,220,255))
         # buttons
@@ -649,12 +726,32 @@ class App:
         self.screen.fill((22,24,30))
         draw_text(self.screen, "Boutique — 3 améliorations au choix", (60,60), 28)
         draw_text(self.screen, f"Or : {self.gold}", (60, 96), 24)
-        for b in self.shop_btns: b.draw(self.screen)
+        for offer, button in zip(self.shop_offers, self.shop_btns):
+            bought = offer['id'] in self.purchased_offers
+            button.text = ("[ACHETÉ] " if bought else "") + (
+                f"{offer['name']}  (coût {offer.get('cost',0)})"
+            )
+            button.draw(self.screen)
         self.shop_continue.draw(self.screen)
+        draw_text(self.screen, f"Prochain combat : {CONTENT['stages'][self.stage_index]['name']}",
+                  (60, 404), 20)
+        for code, btn in zip(ROUTES, self.shop_route_btns):
+            planned = prepare_encounter(CONTENT["stages"][self.stage_index], code)
+            name = ROUTES[code]["label"] + (" + gel" if code == "safe" else "")
+            selected = "●" if self.route_choice == code else "○"
+            true_player_ticks = planned["player_ticks"] + self.shop_ticks_bonus
+            true_enemy_ticks = max(1, math.ceil(
+                planned["enemy_ticks"] * (1 - self.shop_enemy_tick_reduction)))
+            btn.text = (f"{selected} {name}: {true_player_ticks} ticks, "
+                        f"ennemi {true_enemy_ticks}, gain {planned['reward_gold']} or")
+            btn.draw(self.screen)
+        if self.message:
+            draw_text(self.screen, self.message, (60, self.screen.get_height() - 55), 20)
     
     def draw_meta(self):
         self.screen.fill((20,22,28))
-        draw_text(self.screen, "Fin de run — Progression méta", (60,60), 28)
+        status = "VICTOIRE DE LA CAMPAGNE" if self.manches_won >= len(CONTENT["stages"]) else "Fin de run — Progression méta"
+        draw_text(self.screen, status, (60,60), 28)
         draw_text(self.screen, f"Amazon débloquée : {'Oui' if self.meta['amazon_unlocked'] else 'Non'}", (60, 100), 22)
         # back to menu button
         self.meta_btn = Button(pygame.Rect(60, 150, 300, 48), "Retour menu", self.back_to_menu)
@@ -756,6 +853,7 @@ class App:
                                     self.state="play"
                     elif self.state=="shop":
                         for b in self.shop_btns: b.handle_event(ev)
+                        for b in self.shop_route_btns: b.handle_event(ev)
                         self.shop_continue.handle_event(ev)
                     elif self.state=="promotion":
                         for b in getattr(self,'promo_btns',[]): b.handle_event(ev)
@@ -790,11 +888,6 @@ class App:
         save_meta(self.meta)
         pygame.quit()
 
-def main():
-    App().run()
-
-if __name__ == "__main__":
-    main()
     def try_transform_to(self, item):
         cost = item.get('cost', 10)
         kind = item['piece']
@@ -804,17 +897,21 @@ if __name__ == "__main__":
         self.state = "transform_select"
         self.transform_target_kind = kind
         self.transform_cost = cost
+        self.transform_offer_id = item['id']
         self.message = f"Sélectionnez votre pièce à transformer en {PIECE_NAMES_FR[kind]} (Roi exclu)."
 
     def draw_transform_select(self):
-        self.draw_shop()  # draw shop background for context
+        self.draw_play()  # Show the board: the player must select a piece.
         s = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
         s.fill((0,0,0,120)); self.screen.blit(s, (0,0))
         draw_text(self.screen, self.message, (self.screen.get_width()//2, 90), 24, center=True)
 
     def handle_click_transform(self, mx, my):
-        bx,by = self.screen_to_board(mx, my)
-        if bx is None: return
+        ox, oy, _ = self.world_layout()
+        selected = self.to_cell(mx, my, ox, oy)
+        if selected is None:
+            return
+        bx, by = selected
         p = self.board.get(bx,by)
         if not p or p.color != self.player_color:
             self.message = "Cliquez sur l'une de VOS pièces."; return
@@ -824,5 +921,13 @@ if __name__ == "__main__":
             self.message = "Pas assez d'or."; return
         self.gold -= self.transform_cost
         self.board.set(bx, by, Piece(self.transform_target_kind, self.player_color, True))
+        self.player_army = self.count_army(self.player_color)
+        self.purchased_offers.add(self.transform_offer_id)
         self.state = "shop"
         self.message = f"Transformée en {PIECE_NAMES_FR[self.transform_target_kind]}."
+
+def main():
+    App().run()
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,42 @@
+name: Tactical chess roguelite regression
+on:
+  push:
+    branches: ["research/gpt6-tactical-ai-after-review-20261027"]
+  pull_request:
+    branches: ["chatgpt/review-20261024"]
+permissions:
+  contents: read
+concurrency:
+  group: tactical-chess-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  chess-headless:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile all game modules
+        run: python -m compileall -q src tests
+      - name: Headless chess, shop and tactical AI tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      # Unit tests exercise real board/AI logic without graphical dependencies.
+
+  pygame-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install game dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Actual Pygame UI + opponent move (headless SDL)
+        run: PYTHONPATH=. python tests/smoke_pygame.py

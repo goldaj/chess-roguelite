@@ -60,35 +60,35 @@
     },
     {
       "id": "freeze_random",
-      "name": "Freeze al\u00e9atoire (prochaine manche)",
+      "name": "Freeze aléatoire (prochaine manche)",
       "type": "consumable",
       "effect": "freeze_random",
       "cost": 10
     },
     {
       "id": "freeze_target",
-      "name": "Freeze cibl\u00e9 (1x)",
+      "name": "Freeze ciblé (1x)",
       "type": "consumable",
       "effect": "freeze_target",
       "cost": 12
     },
     {
       "id": "start_double",
-      "name": "Double coup au d\u00e9but de prochaine manche",
+      "name": "Double coup au début de prochaine manche",
       "type": "start_power",
       "effect": "double_once",
       "cost": 14
     },
     {
       "id": "start_double_always",
-      "name": "Double coup au d\u00e9but de chaque manche",
+      "name": "Double coup au début de chaque manche",
       "type": "start_power",
       "effect": "double_always",
       "cost": 40
     },
     {
       "id": "white_bias",
-      "name": "+25% d'\u00eatre Blanc",
+      "name": "+25% d'être Blanc",
       "type": "bias",
       "side": "white",
       "amount": 0.25,
@@ -96,7 +96,7 @@
     },
     {
       "id": "black_bias",
-      "name": "+25% d'\u00eatre Noir",
+      "name": "+25% d'être Noir",
       "type": "bias",
       "side": "black",
       "amount": 0.25,
@@ -144,7 +144,7 @@
     },
     {
       "id": "convert_piece",
-      "name": "Convertir une pi\u00e8ce",
+      "name": "Convertir une pièce",
       "type": "convert",
       "cost": 8
     },
@@ -193,81 +193,103 @@
   ],
   "stages": [
     {
-      "board": [
-        8,
-        8
-      ],
-      "player_ticks": 12,
-      "enemy_ticks": 12,
-      "enemy_start": {
-        "K": 1,
-        "P": 3
-      }
-    },
-    {
-      "board": [
-        8,
-        8
-      ],
-      "player_ticks": 14,
-      "enemy_ticks": 14,
-      "enemy_start": {
-        "K": 1,
-        "P": 3
-      },
-      "enemy_boost": 1
-    },
-    {
-      "board": [
-        8,
-        8
-      ],
-      "player_ticks": 16,
-      "enemy_ticks": 16,
-      "enemy_start": {
-        "K": 1,
-        "P": 3
-      },
-      "enemy_boost": 1
-    },
-    {
-      "board": [
-        8,
-        8
-      ],
-      "player_ticks": 18,
-      "enemy_ticks": 18,
-      "enemy_start": {
-        "K": 1,
-        "P": 3
-      },
-      "enemy_boost": 2
-    },
-    {
-      "board": [
-        8,
-        8
-      ],
-      "player_ticks": 20,
-      "enemy_ticks": 20,
-      "enemy_start": {
-        "K": 1,
-        "P": 3
-      },
-      "enemy_boost": 2
-    },
-    {
+      "name": "Les éclaireurs",
       "board": [
         8,
         8
       ],
       "player_ticks": 22,
-      "enemy_ticks": 22,
+      "enemy_ticks": 16,
+      "reward_gold": 10,
       "enemy_start": {
         "K": 1,
         "P": 3
       },
-      "enemy_boost": 3
+      "goal_captured_material": 0
+    },
+    {
+      "name": "La cavalerie",
+      "board": [
+        8,
+        8
+      ],
+      "player_ticks": 23,
+      "enemy_ticks": 18,
+      "reward_gold": 12,
+      "enemy_start": {
+        "K": 1,
+        "P": 3,
+        "N": 1
+      },
+      "goal_captured_material": 2
+    },
+    {
+      "name": "Les archers",
+      "board": [
+        8,
+        8
+      ],
+      "player_ticks": 24,
+      "enemy_ticks": 19,
+      "reward_gold": 14,
+      "enemy_start": {
+        "K": 1,
+        "P": 3,
+        "B": 1
+      },
+      "goal_captured_material": 3
+    },
+    {
+      "name": "L'étau",
+      "board": [
+        8,
+        8
+      ],
+      "player_ticks": 25,
+      "enemy_ticks": 21,
+      "reward_gold": 16,
+      "enemy_start": {
+        "K": 1,
+        "P": 4,
+        "N": 1,
+        "B": 1
+      },
+      "goal_captured_material": 4
+    },
+    {
+      "name": "Le bastion",
+      "board": [
+        8,
+        8
+      ],
+      "player_ticks": 26,
+      "enemy_ticks": 23,
+      "reward_gold": 19,
+      "enemy_start": {
+        "K": 1,
+        "P": 3,
+        "R": 1,
+        "B": 1
+      },
+      "goal_captured_material": 5
+    },
+    {
+      "name": "Le roi de fer",
+      "board": [
+        8,
+        8
+      ],
+      "player_ticks": 28,
+      "enemy_ticks": 25,
+      "reward_gold": 24,
+      "enemy_start": {
+        "K": 1,
+        "P": 3,
+        "N": 1,
+        "R": 1,
+        "Q": 1
+      },
+      "goal_captured_material": 8
     }
   ]
 }
